@@ -1,57 +1,40 @@
 import React, { useEffect } from "react";
-import { SafeAreaView, View, Text, StyleSheet, Image } from "react-native";
-import { useNavigation } from "@react-navigation/native";
+import { View, Text, Image, StyleSheet } from "react-native";
+import { NativeStackScreenProps } from "@react-navigation/native-stack";
+import { AuthStackParamList } from "../../app/navigation/navigation_root/AuthNavigator";
 
-export default function SplashScreen() {
-  const navigation = useNavigation<any>();
+type Props = NativeStackScreenProps<AuthStackParamList, "Splash">;
 
+export default function SplashScreen({ navigation }: Props) {
   useEffect(() => {
     const t = setTimeout(() => {
-      navigation.replace("ChooseAuth");
-    }, 1200);
+      navigation.replace("Onboarding"); // <- вот почему раньше “висело”
+    }, 900);
 
     return () => clearTimeout(t);
   }, [navigation]);
 
   return (
-    <SafeAreaView style={styles.safe}>
-      <View style={styles.content}>
-        <View style={styles.ringWrap}>
-          <Image
-            source={require("../../../assets/ai-avatar.png")}
-            style={styles.ring}
-            resizeMode="contain"
-          />
+    <View style={styles.container}>
+      {/* Лого сверху */}
+      <Image
+        source={require("../../../assets/zanai-logo.png")}
+        style={styles.logo}
+      />
 
-          <Image
-            source={require("../../../assets/zanai-logo.png")}
-            style={styles.ringLogo}
-            resizeMode="contain"
-          />
-        </View>
-
+      {/* Центр */}
+      <View style={styles.center}>
         <Text style={styles.title}>ZanAI</Text>
         <Text style={styles.subtitle}>Загрузка...</Text>
       </View>
-    </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: "#fff" },
-  content: { flex: 1, alignItems: "center", justifyContent: "center" },
-
-  ringWrap: { width: 260, height: 260, marginBottom: 16 },
-  ring: { width: "100%", height: "100%" },
-
-  ringLogo: {
-    position: "absolute",
-    top: 18,
-    alignSelf: "center",
-    width: 110,
-    height: 40,
-  },
-
-  title: { fontSize: 28, fontWeight: "800" },
-  subtitle: { marginTop: 6, fontSize: 14, opacity: 0.7 },
+  container: { flex: 1, backgroundColor: "#fff", alignItems: "center" },
+  logo: { width: 160, height: 44, marginTop: 56, resizeMode: "contain" },
+  center: { flex: 1, justifyContent: "center", alignItems: "center" },
+  title: { fontSize: 34, fontWeight: "700" },
+  subtitle: { marginTop: 8, fontSize: 16, opacity: 0.6 },
 });
