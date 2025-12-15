@@ -1,11 +1,16 @@
 import React from "react";
-import { View, Text } from "react-native";
+import { View, Text, StyleSheet } from "react-native";
 
 export default function NewsHomeScreen() {
   return (
-    <View style={{ flex: 1, padding: 24 }}>
-      <Text style={{ fontSize: 20, fontWeight: "700" }}>Новости дня</Text>
-      <Text style={{ marginTop: 12 }}>Тут будет лента новостей + кнопка “Ещё”.</Text>
+    <View style={styles.container}>
+      <Text style={styles.title}>Новости</Text>
+      <Text>Тут будет лента новостей / обновления законодательства.</Text>
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  container: { flex: 1, padding: 16, backgroundColor: "#fff" },
+  title: { fontSize: 22, fontWeight: "800", marginBottom: 8 },
+});
