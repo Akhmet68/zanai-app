@@ -7,15 +7,7 @@ import ChooseAuthScreen from "../../../screens/auth/ChooseAuthScreen";
 import LoginScreen from "../../../screens/auth/LoginScreen";
 import RegisterScreen from "../../../screens/auth/RegisterScreen";
 
-export type AuthStackParamList = {
-  Splash: undefined;
-  Onboarding: undefined;
-  ChooseAuth: undefined;
-  Login: undefined;
-  Register: undefined;
-};
-
-const Stack = createNativeStackNavigator<AuthStackParamList>();
+const Stack = createNativeStackNavigator();
 
 export default function AuthNavigator() {
   return (
