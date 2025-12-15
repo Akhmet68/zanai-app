@@ -1,20 +1,35 @@
 import React from "react";
-import { View, Text } from "react-native";
+import { Image, StyleSheet, Text, View } from "react-native";
+import Screen from "../../ui/Screen";
+import Button from "../../ui/Button";
+import { colors } from "../../core/colors";
 
 export default function ChooseAuthScreen({ navigation }: any) {
   return (
-    <View style={{ flex: 1, padding: 24, justifyContent: "center", gap: 12 }}>
-      <Text style={{ fontSize: 22, fontWeight: "700", textAlign: "center" }}>ZanAI</Text>
+    <Screen>
+      <View style={styles.top}>
+        <Image source={require("../../../assets/zanai-logo.png")} style={styles.logo} />
+      </View>
 
-      <Text onPress={() => navigation.navigate("Login")}
-        style={{ textAlign: "center", padding: 14, borderWidth: 1, borderRadius: 12 }}>
-        Kiru
-      </Text>
+      <View style={styles.center}>
+        <Text style={styles.brand}>ZanAI</Text>
+      </View>
 
-      <Text onPress={() => navigation.navigate("Register")}
-        style={{ textAlign: "center", padding: 14, borderWidth: 1, borderRadius: 12 }}>
-        Tirkelu
-      </Text>
-    </View>
+      <View style={styles.bottom}>
+        <Button title="Kiru" onPress={() => navigation.navigate("Login")} />
+        <View style={{ height: 12 }} />
+        <Button title="Tirkelu" onPress={() => navigation.navigate("Register")} />
+      </View>
+    </Screen>
   );
 }
+
+const styles = StyleSheet.create({
+  top: { alignItems: "center", paddingTop: 14 },
+  logo: { width: 170, height: 46, resizeMode: "contain" },
+
+  center: { flex: 1, justifyContent: "flex-end", alignItems: "center", paddingBottom: 22 },
+  brand: { fontSize: 20, fontWeight: "700", color: colors.text },
+
+  bottom: { paddingHorizontal: 22, paddingBottom: 32 },
+});
