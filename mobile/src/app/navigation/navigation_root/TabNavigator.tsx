@@ -7,24 +7,21 @@ import ChatScreen from "../../../screens/ai/ChatScreen";
 import MyCasesScreen from "../../../screens/cases/MyCasesScreen";
 import ProfileScreen from "../../../screens/profile/ProfileScreen";
 
-export type TabParamList = {
-  Home: undefined;
-  Laws: undefined;
-  AI: undefined;
-  Cases: undefined;
-  Profile: undefined;
-};
+import CustomTabBar from "../../../ui/CustomTabBar";
 
-const Tab = createBottomTabNavigator<TabParamList>();
+const Tab = createBottomTabNavigator();
 
 export default function TabNavigator() {
   return (
-    <Tab.Navigator screenOptions={{ headerShown: false }}>
-      <Tab.Screen name="Home" component={NewsHomeScreen} options={{ title: "Новости" }} />
-      <Tab.Screen name="Laws" component={LawsHomeScreen} options={{ title: "Законы" }} />
-      <Tab.Screen name="AI" component={ChatScreen} options={{ title: "AI" }} />
-      <Tab.Screen name="Cases" component={MyCasesScreen} options={{ title: "Кейсы" }} />
-      <Tab.Screen name="Profile" component={ProfileScreen} options={{ title: "Профиль" }} />
+    <Tab.Navigator
+      screenOptions={{ headerShown: false }}
+      tabBar={(props) => <CustomTabBar {...props} />}
+    >
+      <Tab.Screen name="Home" component={NewsHomeScreen} />
+      <Tab.Screen name="Laws" component={LawsHomeScreen} />
+      <Tab.Screen name="AI" component={ChatScreen} />
+      <Tab.Screen name="Cases" component={MyCasesScreen} />
+      <Tab.Screen name="Profile" component={ProfileScreen} />
     </Tab.Navigator>
   );
 }
