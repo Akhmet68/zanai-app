@@ -1,16 +1,29 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import AuthNavigator from "./AuthNavigator";
 import TabNavigator from "./TabNavigator";
 
-const Stack = createNativeStackNavigator();
+export type RootStackParamList = {
+  Auth: undefined;
+  Main: undefined;
+};
+
+const Stack = createNativeStackNavigator<RootStackParamList>();
 
 export default function RootNavigator() {
-  // MVP: без настоящей авторизации — переключатель состояния
+  // MVP: позже заменим на реальную авторизацию (JWT/refresh token)
   const [isAuthed] = useState(false);
 
+  const initialRouteName = useMemo<keyof RootStackParamList>(
+    () => (isAuthed ? "Main" : "Auth"),
+    [isAuthed]
+  );
+
   return (
-    <Stack.Navigator screenOptions={{ headerShown: false }}>
+    <Stack.Navigator
+      initialRouteName={initialRouteName}
+      screenOptions={{ headerShown: false }}
+    >
       {isAuthed ? (
         <Stack.Screen name="Main" component={TabNavigator} />
       ) : (
