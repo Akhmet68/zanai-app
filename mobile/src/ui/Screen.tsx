@@ -24,12 +24,6 @@ export default function Screen({
 }
 
 const styles = StyleSheet.create({
-  root: {
-    flex: 1,
-    backgroundColor: colors.bg,
-  },
-  content: {
-    flex: 1,
-    paddingTop: 8,
-  },
+  root: { flex: 1, backgroundColor: colors.bg },
+  content: { flex: 1 },
 });

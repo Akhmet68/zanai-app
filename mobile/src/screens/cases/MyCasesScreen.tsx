@@ -1,21 +1,31 @@
 import React from "react";
-import { View, Text, StyleSheet } from "react-native";
+import { Text, StyleSheet } from "react-native";
 import Screen from "../../ui/Screen";
+import Header from "../../ui/Header";
 import { colors } from "../../core/colors";
 
 export default function MyCasesScreen() {
   return (
     <Screen>
-      <View style={styles.container}>
-        <Text style={styles.title}>Мои дела</Text>
-        <Text style={styles.subtitle}>История обращений / кейсы / статусы.</Text>
-      </View>
+      <Header />
+      <Text style={styles.title}>Мои дела</Text>
+      <Text style={styles.text}>История обращений / кейсы / статусы.</Text>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, paddingHorizontal: 16, paddingTop: 10 },
-  title: { fontSize: 28, fontWeight: "900", color: colors.text },
-  subtitle: { marginTop: 8, fontSize: 16, color: colors.muted },
+  title: {
+    paddingHorizontal: 16,
+    fontSize: 32,
+    fontWeight: "900",
+    color: colors.text,
+    marginTop: 2,
+  },
+  text: {
+    paddingHorizontal: 16,
+    marginTop: 8,
+    fontSize: 16,
+    color: colors.muted,
+  },
 });
