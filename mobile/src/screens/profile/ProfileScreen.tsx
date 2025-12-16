@@ -20,6 +20,7 @@ import * as Haptics from "expo-haptics";
 
 import Screen from "../../ui/Screen";
 import { colors } from "../../core/colors";
+import { getTabBarSpace } from "../../ui/CustomTabBar";
 
 const LOGO = require("../../../assets/zanai-logo.png");
 
@@ -34,7 +35,6 @@ type RowProps = {
 };
 
 function hapticLight() {
-  // чтобы не падало на некоторых девайсах/эмуляторах
   Haptics.selectionAsync?.().catch?.(() => {});
 }
 
@@ -53,7 +53,12 @@ function Row({ icon, title, subtitle, right, onPress, danger, disabled }: RowPro
         pressed && onPress ? { transform: [{ scale: 0.985 }], opacity: 0.85 } : null,
       ]}
     >
-      <View style={[styles.rowIcon, danger && { borderColor: "#F1B5B5", backgroundColor: "#FFF5F5" }]}>
+      <View
+        style={[
+          styles.rowIcon,
+          danger && { borderColor: "#F1B5B5", backgroundColor: "#FFF5F5" },
+        ]}
+      >
         <Ionicons name={icon} size={20} color={danger ? "#B42318" : colors.text} />
       </View>
 
@@ -103,43 +108,32 @@ export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<any>();
 
-  // DEMO-данные (потом подключишь реальные)
+  const tabSpace = getTabBarSpace(insets.bottom);
+
   const [name, setName] = useState("Имя Фамилия");
   const [email] = useState("user@email.com");
   const [plan] = useState<"Free" | "Pro">("Free");
   const [lang, setLang] = useState<"RU" | "KZ">("RU");
 
-  // Настройки
   const [notifications, setNotifications] = useState(true);
   const [darkMode, setDarkMode] = useState(false);
   const [biometric, setBiometric] = useState(false);
 
-  // Аватар
   const [avatarUri, setAvatarUri] = useState<string | null>(null);
 
   const completeness = useMemo(() => {
-    // простая “магия”: считаем заполненность
     let score = 0;
     if (name.trim().length >= 3) score += 0.25;
     if (email.includes("@")) score += 0.25;
     if (avatarUri) score += 0.25;
     if (biometric || notifications || darkMode) score += 0.25;
-    return Math.min(1, score); // 0..1
+    return Math.min(1, score);
   }, [name, email, avatarUri, biometric, notifications, darkMode]);
 
   const percent = Math.round(completeness * 100);
 
-  const safeNavigateOrAlert = (routeName: string) => {
-    try {
-      navigation.navigate(routeName);
-    } catch {
-      Alert.alert("Скоро", `Экран “${routeName}” подключим в следующем шаге 🙂`);
-    }
-  };
-
   const pickAvatar = async () => {
     hapticLight();
-
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== "granted") {
       Alert.alert("Доступ", "Нужен доступ к галерее, чтобы выбрать аватар.");
@@ -166,7 +160,6 @@ export default function ProfileScreen() {
   };
 
   const onEditProfile = () => {
-    // Пока демо: меняем имя для проверки
     hapticLight();
     Alert.alert("Профиль", "Тут откроем редактирование профиля (MVP).", [
       { text: "Ок" },
@@ -177,16 +170,16 @@ export default function ProfileScreen() {
   const onLogout = () => {
     Alert.alert("Выход", "Выйти из аккаунта?", [
       { text: "Отмена", style: "cancel" },
-      { text: "Выйти", style: "destructive", onPress: () => Alert.alert("Ок", "Сделаем реальный logout после подключения auth.") },
+      {
+        text: "Выйти",
+        style: "destructive",
+        onPress: () => Alert.alert("Ок", "Реальный logout сделаем после auth."),
+      },
     ]);
   };
 
-  const onDeleteAccount = () => {
-    Alert.alert("Недоступно", "Удаление аккаунта включим после авторизации и бэка.");
-  };
-
   const onSupport = () => {
-    const emailTo = "support@zanai.app"; // поменяешь на свой
+    const emailTo = "support@zanai.app";
     Linking.openURL(`mailto:${emailTo}?subject=ZanAI%20Support`).catch(() =>
       Alert.alert("Ошибка", "Не удалось открыть почту.")
     );
@@ -197,16 +190,14 @@ export default function ProfileScreen() {
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{
-          paddingBottom: Math.max(insets.bottom, 12) + 140,
+          paddingBottom: tabSpace + 24,
         }}
       >
-        {/* Живая шапка */}
         <LinearGradient
           colors={["#0B1E5B", "#1B2C63", "#FFFFFF"]}
           locations={[0, 0.55, 1]}
-          style={[styles.hero, { paddingTop: insets.top + 12 }]}
+          style={styles.hero}
         >
-          {/* Top mini bar */}
           <View style={styles.heroTop}>
             <Image source={LOGO} style={styles.heroLogo} />
 
@@ -233,7 +224,6 @@ export default function ProfileScreen() {
 
           <Text style={styles.title}>Профиль</Text>
 
-          {/* Карточка пользователя */}
           <View style={styles.profileCard}>
             <View style={styles.userRow}>
               <Pressable
@@ -247,7 +237,7 @@ export default function ProfileScreen() {
                 {avatarUri ? (
                   <Image source={{ uri: avatarUri }} style={styles.avatarImg} />
                 ) : (
-                  <Ionicons name="person" size={24} color={colors.muted} />
+                  <Ionicons name="person" size={26} color={colors.muted} />
                 )}
 
                 <View style={styles.avatarBadge}>
@@ -278,7 +268,6 @@ export default function ProfileScreen() {
               </Pressable>
             </View>
 
-            {/* Прогресс заполненности */}
             <View style={{ marginTop: 14 }}>
               <View style={styles.progressRow}>
                 <Text style={styles.progressLabel}>Заполненность профиля</Text>
@@ -290,46 +279,23 @@ export default function ProfileScreen() {
               </View>
 
               <Text style={styles.progressHint}>
-                Добавь аватар и включи безопасность — профиль будет выглядеть “профи”.
+                Добавь аватар и включи биометрию — профиль будет выглядеть “профи”.
               </Text>
             </View>
           </View>
 
-          {/* Быстрые действия */}
           <View style={styles.quickRow}>
-            <QuickAction
-              icon="diamond-outline"
-              label="Подписка"
-              onPress={() => safeNavigateOrAlert("Subscription")}
-            />
-            <QuickAction
-              icon="time-outline"
-              label="История"
-              onPress={() => navigation.navigate("Cases")}
-            />
-            <QuickAction
-              icon="bookmark-outline"
-              label="Избранное"
-              onPress={() => safeNavigateOrAlert("Favorites")}
-            />
-            <QuickAction
-              icon="help-circle-outline"
-              label="Помощь"
-              onPress={onSupport}
-            />
+            <QuickAction icon="diamond-outline" label="Подписка" onPress={() => navigation.navigate("Subscription")} />
+            <QuickAction icon="time-outline" label="История" onPress={() => navigation.navigate("Cases")} />
+            <QuickAction icon="bookmark-outline" label="Избранное" onPress={() => navigation.navigate("Favorites")} />
+            <QuickAction icon="help-circle-outline" label="Помощь" onPress={onSupport} />
           </View>
         </LinearGradient>
 
-        {/* Настройки */}
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>Настройки</Text>
 
-          <Row
-            icon="diamond-outline"
-            title="Подписка"
-            subtitle="Оформить / управлять"
-            onPress={() => safeNavigateOrAlert("Subscription")}
-          />
+          <Row icon="diamond-outline" title="Подписка" subtitle="Оформить / управлять" onPress={() => navigation.navigate("Subscription")} />
 
           <View style={styles.divider} />
 
@@ -337,9 +303,7 @@ export default function ProfileScreen() {
             icon="language-outline"
             title="Язык"
             subtitle={lang === "RU" ? "Русский (RU)" : "Қазақша (KZ)"}
-            onPress={() =>
-              Alert.alert("Язык", "Сделаем экран выбора языка. Сейчас переключение вверху.")
-            }
+            onPress={() => Alert.alert("Язык", "Сделаем экран выбора языка. Сейчас переключение вверху.")}
           />
 
           <View style={styles.divider} />
@@ -383,25 +347,14 @@ export default function ProfileScreen() {
           />
         </View>
 
-        {/* Безопасность */}
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>Безопасность</Text>
 
-          <Row
-            icon="key-outline"
-            title="Изменить пароль"
-            subtitle="Рекомендуем раз в 3 месяца"
-            onPress={() => safeNavigateOrAlert("ChangePassword")}
-          />
+          <Row icon="key-outline" title="Изменить пароль" subtitle="Рекомендуем раз в 3 месяца" onPress={() => navigation.navigate("ChangePassword")} />
 
           <View style={styles.divider} />
 
-          <Row
-            icon="phone-portrait-outline"
-            title="Устройства"
-            subtitle="Список активных устройств (заглушка)"
-            onPress={() => safeNavigateOrAlert("Devices")}
-          />
+          <Row icon="phone-portrait-outline" title="Устройства" subtitle="Список активных устройств" onPress={() => navigation.navigate("Devices")} />
 
           <View style={styles.divider} />
 
@@ -424,38 +377,20 @@ export default function ProfileScreen() {
           />
         </View>
 
-        {/* Помощь */}
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>Помощь</Text>
 
-          <Row
-            icon="chatbubble-ellipses-outline"
-            title="Поддержка"
-            subtitle="Написать в поддержку"
-            onPress={onSupport}
-          />
+          <Row icon="chatbubble-ellipses-outline" title="Поддержка" subtitle="Написать в поддержку" onPress={onSupport} />
 
           <View style={styles.divider} />
 
-          <Row
-            icon="information-circle-outline"
-            title="О приложении"
-            subtitle="Версия 0.1 (MVP)"
-            onPress={() => Alert.alert("ZanAI", "Сюда добавим экран About + политики + условия.")}
-          />
+          <Row icon="information-circle-outline" title="О приложении" subtitle="Версия 0.1 (MVP)" onPress={() => Alert.alert("ZanAI", "Сюда добавим экран About + политики + условия.")} />
         </View>
 
-        {/* Опасная зона */}
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>Опасная зона</Text>
 
-          <Row
-            icon="log-out-outline"
-            title="Выйти"
-            subtitle="Завершить сессию"
-            onPress={onLogout}
-            danger
-          />
+          <Row icon="log-out-outline" title="Выйти" subtitle="Завершить сессию" onPress={onLogout} danger />
 
           <View style={styles.divider} />
 
@@ -463,7 +398,7 @@ export default function ProfileScreen() {
             icon="trash-outline"
             title="Удалить аккаунт"
             subtitle="Пока недоступно (после авторизации)"
-            onPress={onDeleteAccount}
+            onPress={() => Alert.alert("Недоступно", "Удаление аккаунта включим после авторизации и бэка.")}
             danger
             disabled
           />
@@ -477,10 +412,11 @@ export default function ProfileScreen() {
 
 const styles = StyleSheet.create({
   hero: {
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 16,
     borderBottomLeftRadius: 26,
     borderBottomRightRadius: 26,
-    paddingHorizontal: 16,
-    paddingBottom: 16,
   },
   heroTop: {
     flexDirection: "row",
@@ -489,8 +425,8 @@ const styles = StyleSheet.create({
     paddingBottom: 10,
   },
   heroLogo: {
-    height: 28, // заметнее, чем раньше
-    width: 140,
+    height: 32,
+    width: 160,
     resizeMode: "contain",
   },
   heroRight: { flexDirection: "row", alignItems: "center", gap: 10 },
@@ -535,9 +471,9 @@ const styles = StyleSheet.create({
   userRow: { flexDirection: "row", alignItems: "center", gap: 12 },
 
   avatar: {
-    width: 64,
-    height: 64,
-    borderRadius: 22,
+    width: 68,
+    height: 68,
+    borderRadius: 24,
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: "#F7F7F9",
@@ -594,11 +530,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#EEF0F3",
     overflow: "hidden",
   },
-  progressFill: {
-    height: "100%",
-    borderRadius: 999,
-    backgroundColor: colors.navy,
-  },
+  progressFill: { height: "100%", borderRadius: 999, backgroundColor: colors.navy },
   progressHint: { marginTop: 8, fontSize: 12, color: colors.muted, lineHeight: 16 },
 
   quickRow: { flexDirection: "row", gap: 10, marginTop: 12 },
@@ -634,19 +566,9 @@ const styles = StyleSheet.create({
     backgroundColor: colors.white,
     padding: 14,
   },
-  sectionTitle: {
-    fontSize: 14,
-    fontWeight: "900",
-    color: colors.text,
-    marginBottom: 10,
-  },
+  sectionTitle: { fontSize: 14, fontWeight: "900", color: colors.text, marginBottom: 10 },
 
-  row: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    paddingVertical: 10,
-  },
+  row: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 10 },
   rowIcon: {
     width: 40,
     height: 40,
@@ -663,11 +585,5 @@ const styles = StyleSheet.create({
 
   divider: { height: 1, backgroundColor: "#EEF0F3" },
 
-  footerText: {
-    marginTop: 12,
-    marginBottom: 18,
-    textAlign: "center",
-    color: colors.muted,
-    fontSize: 12,
-  },
+  footerText: { marginTop: 12, marginBottom: 18, textAlign: "center", color: colors.muted, fontSize: 12 },
 });

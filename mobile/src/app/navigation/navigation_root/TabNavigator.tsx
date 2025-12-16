@@ -1,6 +1,5 @@
 import React from "react";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import NewsHomeScreen from "../../../screens/news/NewsHomeScreen";
 import LawsHomeScreen from "../../../screens/laws/LawsHomeScreen";
@@ -21,18 +20,12 @@ export type TabParamList = {
 const Tab = createBottomTabNavigator<TabParamList>();
 
 export default function TabNavigator() {
-  const insets = useSafeAreaInsets();
-
-  const bottomPad = Math.max(insets.bottom, 10);
-  const tabSpace = 8 + 66 + bottomPad; // твой CustomTabBar
-
   return (
     <Tab.Navigator
       screenOptions={{
         headerShown: false,
         tabBarHideOnKeyboard: true,
       }}
-      sceneContainerStyle={{ paddingBottom: tabSpace }}
       tabBar={(props) => <CustomTabBar {...props} />}
     >
       <Tab.Screen name="Home" component={NewsHomeScreen} />

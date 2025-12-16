@@ -5,8 +5,13 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { colors } from "../core/colors";
 
-export const TAB_BAR_HEIGHT = 66; // высота "плашки"
-export const TAB_BAR_TOP_GAP = 8; // воздух над плашкой
+export const TAB_BAR_HEIGHT = 66;
+export const TAB_BAR_TOP_GAP = 8;
+
+export function getTabBarSpace(bottomInset: number) {
+  const bottomPad = Math.max(bottomInset, 10);
+  return TAB_BAR_TOP_GAP + TAB_BAR_HEIGHT + bottomPad;
+}
 
 const ICONS_OUTLINE: Record<string, keyof typeof Ionicons.glyphMap> = {
   Home: "home-outline",
@@ -23,24 +28,12 @@ const ICONS_FILLED: Partial<Record<string, keyof typeof Ionicons.glyphMap>> = {
   Profile: "person",
 };
 
-export default function CustomTabBar({
-  state,
-  descriptors,
-  navigation,
-}: BottomTabBarProps) {
+export default function CustomTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
   const bottomPad = Math.max(insets.bottom, 10);
 
   return (
-    <View
-      pointerEvents="box-none"
-      style={[
-        styles.container,
-        {
-          paddingBottom: bottomPad,
-        },
-      ]}
-    >
+    <View pointerEvents="box-none" style={[styles.container, { paddingBottom: bottomPad }]}>
       <View style={styles.bar} pointerEvents="auto">
         {state.routes.map((route, index) => {
           const isFocused = state.index === index;
@@ -58,28 +51,19 @@ export default function CustomTabBar({
           };
 
           const onLongPress = () => {
-            navigation.emit({
-              type: "tabLongPress",
-              target: route.key,
-            });
+            navigation.emit({ type: "tabLongPress", target: route.key });
           };
 
-          // Центр. кнопка Ai
           if (route.name === "AI") {
             return (
               <View key={route.key} style={styles.aiSlot}>
                 <Pressable
                   onPress={onPress}
                   onLongPress={onLongPress}
-                  style={({ pressed }) => [
-                    styles.aiButton,
-                    pressed && { opacity: 0.9 },
-                  ]}
+                  style={({ pressed }) => [styles.aiButton, pressed && { opacity: 0.9 }]}
                   accessibilityRole="button"
                   accessibilityState={isFocused ? { selected: true } : {}}
-                  accessibilityLabel={
-                    descriptors[route.key]?.options?.tabBarAccessibilityLabel
-                  }
+                  accessibilityLabel={descriptors[route.key]?.options?.tabBarAccessibilityLabel}
                 >
                   <Text style={styles.aiText}>Ai</Text>
                 </Pressable>
@@ -101,9 +85,7 @@ export default function CustomTabBar({
               style={({ pressed }) => [styles.item, pressed && { opacity: 0.7 }]}
               accessibilityRole="button"
               accessibilityState={isFocused ? { selected: true } : {}}
-              accessibilityLabel={
-                descriptors[route.key]?.options?.tabBarAccessibilityLabel
-              }
+              accessibilityLabel={descriptors[route.key]?.options?.tabBarAccessibilityLabel}
             >
               <Ionicons name={iconName} size={24} color={iconColor} />
             </Pressable>
@@ -115,18 +97,15 @@ export default function CustomTabBar({
 }
 
 const styles = StyleSheet.create({
-  // ВАЖНО: absolute, чтобы таббар не “сжимал” экран и не ломал SafeArea сверху
   container: {
     position: "absolute",
     left: 0,
     right: 0,
     bottom: 0,
-
     backgroundColor: "transparent",
     paddingTop: TAB_BAR_TOP_GAP,
     alignItems: "center",
   },
-
   bar: {
     width: "92%",
     height: TAB_BAR_HEIGHT,
@@ -138,7 +117,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: 10,
-
     ...Platform.select({
       ios: {
         shadowColor: "#000",
@@ -149,7 +127,6 @@ const styles = StyleSheet.create({
       android: { elevation: 6 },
     }),
   },
-
   item: {
     width: 56,
     height: 56,
@@ -157,7 +134,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-
   aiSlot: {
     width: 68,
     alignItems: "center",

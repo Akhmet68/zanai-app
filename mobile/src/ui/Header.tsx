@@ -6,6 +6,9 @@ import { colors } from "../core/colors";
 const LOGO = require("../../assets/zanai-logo.png");
 
 type Props = {
+  leftVariant?: "none" | "back" | "menu";
+  onPressLeft?: () => void;
+
   rightVariant?: "default" | "none";
   lang?: string;
   onPressLang?: () => void;
@@ -13,6 +16,8 @@ type Props = {
 };
 
 export default function Header({
+  leftVariant = "none",
+  onPressLeft,
   rightVariant = "default",
   lang = "RU",
   onPressLang,
@@ -20,7 +25,21 @@ export default function Header({
 }: Props) {
   return (
     <View style={styles.wrap}>
-      <Image source={LOGO} style={styles.logo} />
+      <View style={styles.left}>
+        {leftVariant !== "none" ? (
+          <Pressable onPress={onPressLeft} style={styles.leftBtn} hitSlop={10}>
+            <Ionicons
+              name={leftVariant === "back" ? "arrow-back" : "menu"}
+              size={22}
+              color={colors.text}
+            />
+          </Pressable>
+        ) : (
+          <View style={styles.leftPlaceholder} />
+        )}
+
+        <Image source={LOGO} style={styles.logo} />
+      </View>
 
       {rightVariant === "default" ? (
         <View style={styles.right}>
@@ -50,14 +69,27 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
   },
 
+  left: { flexDirection: "row", alignItems: "center", gap: 10 },
+  leftBtn: {
+    width: 42,
+    height: 42,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.white,
+  },
+  leftPlaceholder: { width: 42, height: 42 },
+
   logo: {
-    height: 30,
-    width: 150,
+    height: 34,
+    width: 170,
     resizeMode: "contain",
   },
 
   right: { flexDirection: "row", alignItems: "center", gap: 10 },
-  rightPlaceholder: { width: 40, height: 40 },
+  rightPlaceholder: { width: 42, height: 42 },
 
   langBtn: {
     flexDirection: "row",
