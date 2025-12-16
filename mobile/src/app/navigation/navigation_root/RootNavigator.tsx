@@ -6,7 +6,7 @@ import TabNavigator from "./TabNavigator";
 import SubscriptionScreen from "../../../screens/profile/SubscriptionScreen";
 import FavoritesScreen from "../../../screens/profile/FavoritesScreen";
 import DevicesScreen from "../../../screens/profile/DevicesScreen";
-import ChangePasswordScreen from "../../../screens/profile/ChangePasswordScreen.tsx";
+import ChangePasswordScreen from "../../../screens/profile/ChangePasswordScreen";
 
 export type RootStackParamList = {
   Auth: undefined;
