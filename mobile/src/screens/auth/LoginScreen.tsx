@@ -16,6 +16,8 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useNavigation } from "@react-navigation/native";
 import Ionicons from "@expo/vector-icons/Ionicons";
+
+import Screen from "../../ui/Screen";
 import { colors } from "../../core/colors";
 import { useAuth } from "../../app/auth/AuthContext";
 
@@ -25,18 +27,25 @@ function SocialButton({
   icon,
   text,
   onPress,
+  variant = "light",
 }: {
   icon: keyof typeof Ionicons.glyphMap;
   text: string;
   onPress: () => void;
+  variant?: "light" | "dark";
 }) {
+  const dark = variant === "dark";
   return (
     <Pressable
       onPress={onPress}
-      style={({ pressed }) => [styles.socialBtn, pressed && { opacity: 0.9 }]}
+      style={({ pressed }) => [
+        styles.socialBtn,
+        dark ? styles.socialDark : styles.socialLight,
+        pressed && { opacity: 0.92, transform: [{ scale: 0.995 }] },
+      ]}
     >
-      <Ionicons name={icon} size={20} color={colors.text} />
-      <Text style={styles.socialText}>{text}</Text>
+      <Ionicons name={icon} size={20} color={dark ? "#fff" : colors.text} />
+      <Text style={[styles.socialText, dark && { color: "#fff" }]}>{text}</Text>
     </Pressable>
   );
 }
@@ -55,143 +64,141 @@ export default function LoginScreen() {
       Alert.alert("Ошибка", "Заполни почту и пароль.");
       return;
     }
-    // ✅ временно (потом подключим бэк)
     setIsAuthed(true);
   };
 
   return (
-    <KeyboardAvoidingView
-      style={{ flex: 1, backgroundColor: "#fff" }}
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
-      keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 0}
-    >
-      <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
-        <ScrollView
-          style={{ flex: 1 }}
-          contentContainerStyle={{
-            flexGrow: 1,
-            paddingTop: insets.top + 10,
-            paddingBottom: insets.bottom + 16,
-            paddingHorizontal: 20,
-          }}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-        >
-          {/* Top bar: back + logo */}
-          <View style={styles.topBar}>
-            <Pressable
-              onPress={() => navigation.goBack()}
-              hitSlop={12}
-              style={styles.backBtn}
-            >
-              <Ionicons name="chevron-back" size={28} color={colors.text} />
-            </Pressable>
-
-            <Image source={LOGO} style={styles.logo} />
-          </View>
-
-          <View style={{ height: 10 }} />
-
-          {/* Title */}
-          <Text style={styles.title}>Kiru</Text>
-          <Text style={styles.subtitle}>
-            Apple/Google арқылы немесе пошта арқылы кіріңіз
-          </Text>
-
-          {/* Social */}
-          <SocialButton
-            icon="logo-apple"
-            text="Apple арқылы кіру"
-            onPress={() => Alert.alert("Скоро", "Apple Sign-In қосамыз (келесі қадам).")}
-          />
-          <SocialButton
-            icon="logo-google"
-            text="Google арқылы кіру"
-            onPress={() => Alert.alert("Скоро", "Google Sign-In қосамыз (келесі қадам).")}
-          />
-
-          <View style={styles.orRow}>
-            <View style={styles.orLine} />
-            <Text style={styles.orText}>немесе</Text>
-            <View style={styles.orLine} />
-          </View>
-
-          {/* Form */}
-          <View style={styles.field}>
-            <TextInput
-              value={email}
-              onChangeText={setEmail}
-              placeholder="Esim/poshta"
-              placeholderTextColor="#9AA3AF"
-              autoCapitalize="none"
-              autoCorrect={false}
-              keyboardType="email-address"
-              style={styles.input}
-            />
-          </View>
-
-          <View style={styles.field}>
-            <TextInput
-              value={password}
-              onChangeText={setPassword}
-              placeholder="Qupiya soz"
-              placeholderTextColor="#9AA3AF"
-              autoCapitalize="none"
-              autoCorrect={false}
-              secureTextEntry={!showPass}
-              style={[styles.input, { paddingRight: 48 }]}
-            />
-
-            <Pressable
-              onPress={() => setShowPass((v) => !v)}
-              hitSlop={12}
-              style={styles.eyeBtn}
-            >
-              <Ionicons
-                name={showPass ? "eye-off-outline" : "eye-outline"}
-                size={22}
-                color={colors.muted}
-              />
-            </Pressable>
-          </View>
-
-          <Pressable onPress={() => {}} style={styles.forgotBtn}>
-            <Text style={styles.forgotText}>Qupiya sozdi qaja ondeu</Text>
-          </Pressable>
-
-          <Pressable onPress={onLogin} style={styles.primaryBtn}>
-            <Text style={styles.primaryBtnText}>Juiege kiru</Text>
-          </Pressable>
-
-          <Pressable
-            onPress={() => navigation.navigate("Register")}
-            style={{ marginTop: 14, alignItems: "center" }}
+    <Screen contentStyle={{ paddingTop: 0 }}>
+      <KeyboardAvoidingView
+        style={{ flex: 1, backgroundColor: colors.white }}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 8 : 0}
+      >
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+          <ScrollView
+            style={{ flex: 1 }}
+            contentContainerStyle={{
+              flexGrow: 1,
+              paddingTop: insets.top + 10,
+              paddingBottom: insets.bottom + 18,
+              paddingHorizontal: 20,
+            }}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
           >
-            <Text style={styles.bottomText}>
-              Juiede joqsýn ba? <Text style={styles.link}>tirkelu</Text>
+            {/* Top bar */}
+            <View style={styles.topBar}>
+              <Pressable
+                onPress={() => navigation.goBack()}
+                hitSlop={12}
+                style={styles.backBtn}
+              >
+                <Ionicons name="chevron-back" size={28} color={colors.text} />
+              </Pressable>
+
+              <Image source={LOGO} style={styles.logo} />
+            </View>
+
+            <View style={{ height: 10 }} />
+
+            <Text style={styles.title}>Kiru</Text>
+            <Text style={styles.subtitle}>
+              Apple/Google арқылы немесе пошта арқылы кіріңіз
             </Text>
-          </Pressable>
 
-          <Pressable
-            onPress={() => setIsAuthed(true)}
-            style={{ marginTop: 14, alignItems: "center" }}
-          >
-            <Text style={styles.guest}>Кірусіз жалғастыру</Text>
-          </Pressable>
+            <SocialButton
+              icon="logo-apple"
+              text="Apple арқылы кіру"
+              variant="dark"
+              onPress={() => Alert.alert("Скоро", "Apple Sign-In қосамыз (Dev Build арқылы).")}
+            />
+            <SocialButton
+              icon="logo-google"
+              text="Google арқылы кіру"
+              onPress={() => Alert.alert("Скоро", "Google Sign-In қосамыз (Dev Build арқылы).")}
+            />
 
-          <View style={{ height: 18 }} />
-        </ScrollView>
-      </TouchableWithoutFeedback>
-    </KeyboardAvoidingView>
+            <View style={styles.orRow}>
+              <View style={styles.orLine} />
+              <Text style={styles.orText}>немесе</Text>
+              <View style={styles.orLine} />
+            </View>
+
+            <View style={styles.field}>
+              <TextInput
+                value={email}
+                onChangeText={setEmail}
+                placeholder="Esim/poshta"
+                placeholderTextColor="#9AA3AF"
+                autoCapitalize="none"
+                autoCorrect={false}
+                keyboardType="email-address"
+                style={styles.input}
+              />
+            </View>
+
+            <View style={styles.field}>
+              <TextInput
+                value={password}
+                onChangeText={setPassword}
+                placeholder="Qupiya soz"
+                placeholderTextColor="#9AA3AF"
+                autoCapitalize="none"
+                autoCorrect={false}
+                secureTextEntry={!showPass}
+                style={[styles.input, { paddingRight: 48 }]}
+              />
+
+              <Pressable
+                onPress={() => setShowPass((v) => !v)}
+                hitSlop={12}
+                style={styles.eyeBtn}
+              >
+                <Ionicons
+                  name={showPass ? "eye-off-outline" : "eye-outline"}
+                  size={22}
+                  color={colors.muted}
+                />
+              </Pressable>
+            </View>
+
+            <Pressable
+              onPress={() => Alert.alert("Скоро", "Восстановление пароля подключим после бэка.")}
+              style={styles.forgotBtn}
+            >
+              <Text style={styles.forgotText}>Qupiya sozdi qaja ondeu</Text>
+            </Pressable>
+
+            <Pressable onPress={onLogin} style={styles.primaryBtn}>
+              <Text style={styles.primaryBtnText}>Juiege kiru</Text>
+            </Pressable>
+
+            <Pressable
+              onPress={() => navigation.navigate("Register")}
+              style={{ marginTop: 14, alignItems: "center" }}
+            >
+              <Text style={styles.bottomText}>
+                Juiede joqsýn ba? <Text style={styles.link}>tirkelu</Text>
+              </Text>
+            </Pressable>
+
+            <Pressable
+              onPress={() => setIsAuthed(true)}
+              style={{ marginTop: 14, alignItems: "center" }}
+            >
+              <Text style={styles.guest}>Кірусіз жалғастыру</Text>
+            </Pressable>
+
+            <View style={{ height: 16 }} />
+          </ScrollView>
+        </TouchableWithoutFeedback>
+      </KeyboardAvoidingView>
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  topBar: {
-    height: 44,
-    justifyContent: "center",
-    alignItems: "center",
-  },
+  topBar: { height: 44, justifyContent: "center", alignItems: "center" },
   backBtn: {
     position: "absolute",
     left: 0,
@@ -200,15 +207,11 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "flex-start",
   },
-  logo: {
-    height: 28,
-    width: 150,
-    resizeMode: "contain",
-  },
+  logo: { height: 28, width: 165, resizeMode: "contain" },
 
   title: {
     fontSize: 28,
-    fontWeight: "800",
+    fontWeight: "900",
     textAlign: "center",
     color: colors.text,
     marginBottom: 6,
@@ -219,28 +222,24 @@ const styles = StyleSheet.create({
     color: colors.muted,
     fontSize: 13,
     marginBottom: 14,
+    lineHeight: 18,
   },
 
   socialBtn: {
     height: 54,
     borderRadius: 18,
     borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.white,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: 10,
     marginBottom: 10,
   },
+  socialLight: { borderColor: colors.border, backgroundColor: colors.white },
+  socialDark: { borderColor: "#0B0B0B", backgroundColor: "#0B0B0B" },
   socialText: { fontSize: 14, fontWeight: "900", color: colors.text },
 
-  orRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    marginVertical: 10,
-  },
+  orRow: { flexDirection: "row", alignItems: "center", gap: 10, marginVertical: 10 },
   orLine: { flex: 1, height: 1, backgroundColor: colors.border },
   orText: { fontSize: 12, color: colors.muted, fontWeight: "800" },
 
@@ -252,12 +251,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#fff",
     marginBottom: 12,
   },
-  input: {
-    height: 56,
-    paddingHorizontal: 16,
-    fontSize: 16,
-    color: colors.text,
-  },
+  input: { height: 56, paddingHorizontal: 16, fontSize: 16, color: colors.text },
   eyeBtn: {
     position: "absolute",
     right: 14,
@@ -267,11 +261,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
 
-  forgotBtn: {
-    alignItems: "center",
-    marginTop: 6,
-    marginBottom: 16,
-  },
+  forgotBtn: { alignItems: "center", marginTop: 6, marginBottom: 16 },
   forgotText: { fontSize: 13, color: colors.muted },
 
   primaryBtn: {
@@ -281,10 +271,9 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
-  primaryBtnText: { color: "#fff", fontSize: 18, fontWeight: "800" },
+  primaryBtnText: { color: "#fff", fontSize: 18, fontWeight: "900" },
 
   bottomText: { color: colors.muted, fontSize: 13 },
   link: { color: colors.navy, fontWeight: "900" },
-
   guest: { color: colors.navy, fontWeight: "900", fontSize: 13 },
 });
