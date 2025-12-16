@@ -1,15 +1,13 @@
-// src/app/auth/AuthContext.tsx
 import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
-import { onAuthStateChanged, User } from "firebase/auth";
+import { onAuthStateChanged, User, reload } from "firebase/auth";
 import { auth } from "../firebase/firebase";
-import { fbLogout, fbReloadUser } from "../firebase/authService";
+import { fbLogout } from "../firebase/authService";
 
 type AuthCtx = {
   user: User | null;
   initializing: boolean;
-
-  isAuthed: boolean;   
-  isVerified: boolean; 
+  isAuthed: boolean;
+  isVerified: boolean;
   guest: boolean;
 
   continueAsGuest: () => void;
@@ -36,6 +34,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const isVerified = !!user?.emailVerified;
   const isAuthed = (!!user && isVerified) || guest;
 
+  const refreshUser = async () => {
+    if (!auth.currentUser) return;
+    await reload(auth.currentUser);
+    setUser({ ...auth.currentUser });
+  };
+
   const value = useMemo<AuthCtx>(
     () => ({
       user,
@@ -48,10 +52,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setGuest(false);
         await fbLogout();
       },
-      refreshUser: async () => {
-        if (!auth.currentUser) return;
-        await fbReloadUser(auth.currentUser);
-      },
+      refreshUser,
     }),
     [user, initializing, isAuthed, isVerified, guest]
   );

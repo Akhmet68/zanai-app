@@ -1,8 +1,18 @@
 import React, { useState } from "react";
 import {
-  View, Text, TextInput, Pressable, Image,
-  KeyboardAvoidingView, Platform, ScrollView, Keyboard,
-  TouchableWithoutFeedback, StyleSheet, Alert, ActivityIndicator,
+  View,
+  Text,
+  TextInput,
+  Pressable,
+  Image,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  Keyboard,
+  TouchableWithoutFeedback,
+  StyleSheet,
+  Alert,
+  ActivityIndicator,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useNavigation } from "@react-navigation/native";
@@ -16,7 +26,10 @@ import { fbLogin, fbResendVerification } from "../../app/firebase/authService";
 const LOGO = require("../../../assets/zanai-logo.png");
 
 function SocialButton({
-  icon, text, onPress, variant = "light",
+  icon,
+  text,
+  onPress,
+  variant = "light",
 }: {
   icon: keyof typeof Ionicons.glyphMap;
   text: string;
@@ -47,30 +60,44 @@ export default function LoginScreen() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPass, setShowPass] = useState(false);
+
   const [loading, setLoading] = useState(false);
 
   const onLogin = async () => {
     const e = email.trim();
     const p = password.trim();
+
     if (!e || !p) return Alert.alert("Ошибка", "Заполни почту и пароль.");
     if (!e.includes("@")) return Alert.alert("Ошибка", "Почта выглядит некорректно.");
     if (p.length < 6) return Alert.alert("Ошибка", "Пароль минимум 6 символов.");
 
     try {
       setLoading(true);
+
       const user = await fbLogin(e, p);
 
+      // ⚠️ После клика по ссылке подтверждения Firebase НЕ обновляет user в приложении автоматически.
+      // Нужно принудительно обновить currentUser (reload), иначе emailVerified останется false.
+      await refreshUser();
+
+      // Важно: user из fbLogin может быть "старым" (emailVerified=false) до reload.
+      // Поэтому используем актуальное значение из auth.currentUser внутри refreshUser.
+      // Но тут уже можем ориентироваться на user из fbLogin как на первичный сигнал.
       if (!user.emailVerified) {
         Alert.alert(
           "Подтверди почту",
-          "Мы отправили письмо со ссылкой подтверждения. Открой почту и нажми на ссылку, затем вернись сюда.",
+          "Мы отправили письмо со ссылкой подтверждения. Открой почту и нажми на ссылку, затем вернись сюда и нажми “Жүйеге кіру” снова.\n\nЕсли уже подтвердил — нажми “Я подтвердил” на следующем экране.",
           [
             { text: "Ок", onPress: () => navigation.navigate("VerifyEmail") },
             {
               text: "Отправить снова",
               onPress: async () => {
-                await fbResendVerification();
-                Alert.alert("Готово", "Письмо отправлено повторно.");
+                try {
+                  await fbResendVerification();
+                  Alert.alert("Готово", "Письмо отправлено повторно.");
+                } catch (err: any) {
+                  Alert.alert("Ошибка", err?.message ?? "Не удалось отправить письмо снова.");
+                }
               },
             },
           ]
@@ -78,8 +105,8 @@ export default function LoginScreen() {
         return;
       }
 
-      // если подтвержден — RootNavigator сам пустит в Main
-      await refreshUser();
+      // ✅ Если подтверждено — RootNavigator сам переведет в Main, потому что isAuthed станет true
+      // (через onAuthStateChanged + emailVerified после reload).
     } catch (err: any) {
       Alert.alert("Ошибка входа", err?.message ?? "Не удалось войти.");
     } finally {
@@ -107,7 +134,11 @@ export default function LoginScreen() {
             showsVerticalScrollIndicator={false}
           >
             <View style={styles.topBar}>
-              <Pressable onPress={() => navigation.goBack()} hitSlop={12} style={styles.backBtn}>
+              <Pressable
+                onPress={() => navigation.goBack()}
+                hitSlop={12}
+                style={styles.backBtn}
+              >
                 <Ionicons name="chevron-back" size={28} color={colors.text} />
               </Pressable>
               <Image source={LOGO} style={styles.logo} />
@@ -116,7 +147,9 @@ export default function LoginScreen() {
             <View style={{ height: 10 }} />
 
             <Text style={styles.title}>Кіру</Text>
-            <Text style={styles.subtitle}>Пошта арқылы кіріңіз (Google/Apple кейін қосамыз)</Text>
+            <Text style={styles.subtitle}>
+              Пошта арқылы кіріңіз (Google/Apple кейін қосамыз)
+            </Text>
 
             <SocialButton
               icon="logo-apple"
@@ -160,7 +193,11 @@ export default function LoginScreen() {
                 secureTextEntry={!showPass}
                 style={[styles.input, { paddingRight: 52 }]}
               />
-              <Pressable onPress={() => setShowPass((v) => !v)} hitSlop={12} style={styles.eyeBtn}>
+              <Pressable
+                onPress={() => setShowPass((v) => !v)}
+                hitSlop={12}
+                style={styles.eyeBtn}
+              >
                 <Ionicons
                   name={showPass ? "eye-off-outline" : "eye-outline"}
                   size={22}
@@ -184,16 +221,26 @@ export default function LoginScreen() {
                 (pressed || loading) && { opacity: 0.92 },
               ]}
             >
-              {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryBtnText}>Жүйеге кіру</Text>}
+              {loading ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.primaryBtnText}>Жүйеге кіру</Text>
+              )}
             </Pressable>
 
-            <Pressable onPress={() => navigation.navigate("Register")} style={{ marginTop: 14, alignItems: "center" }}>
+            <Pressable
+              onPress={() => navigation.navigate("Register")}
+              style={{ marginTop: 14, alignItems: "center" }}
+            >
               <Text style={styles.bottomText}>
                 Аккаунт жоқ па? <Text style={styles.link}>Тіркелу</Text>
               </Text>
             </Pressable>
 
-            <Pressable onPress={continueAsGuest} style={{ marginTop: 14, alignItems: "center" }}>
+            <Pressable
+              onPress={continueAsGuest}
+              style={{ marginTop: 14, alignItems: "center" }}
+            >
               <Text style={styles.guest}>Кірусіз жалғастыру</Text>
             </Pressable>
 
@@ -207,13 +254,42 @@ export default function LoginScreen() {
 
 const styles = StyleSheet.create({
   topBar: { height: 44, justifyContent: "center", alignItems: "center" },
-  backBtn: { position: "absolute", left: 0, height: 44, width: 44, justifyContent: "center", alignItems: "flex-start" },
+  backBtn: {
+    position: "absolute",
+    left: 0,
+    height: 44,
+    width: 44,
+    justifyContent: "center",
+    alignItems: "flex-start",
+  },
   logo: { height: 30, width: 175, resizeMode: "contain" },
 
-  title: { fontSize: 28, fontWeight: "900", textAlign: "center", color: colors.text, marginBottom: 6, marginTop: 6 },
-  subtitle: { textAlign: "center", color: colors.muted, fontSize: 13, marginBottom: 14, lineHeight: 18 },
+  title: {
+    fontSize: 28,
+    fontWeight: "900",
+    textAlign: "center",
+    color: colors.text,
+    marginBottom: 6,
+    marginTop: 6,
+  },
+  subtitle: {
+    textAlign: "center",
+    color: colors.muted,
+    fontSize: 13,
+    marginBottom: 14,
+    lineHeight: 18,
+  },
 
-  socialBtn: { height: 54, borderRadius: 18, borderWidth: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10, marginBottom: 10 },
+  socialBtn: {
+    height: 54,
+    borderRadius: 18,
+    borderWidth: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+    marginBottom: 10,
+  },
   socialLight: { borderColor: colors.border, backgroundColor: colors.white },
   socialDark: { borderColor: "#0B0B0B", backgroundColor: "#0B0B0B" },
   socialText: { fontSize: 14, fontWeight: "900", color: colors.text },
@@ -222,14 +298,34 @@ const styles = StyleSheet.create({
   orLine: { flex: 1, height: 1, backgroundColor: colors.border },
   orText: { fontSize: 12, color: colors.muted, fontWeight: "800" },
 
-  field: { position: "relative", borderWidth: 1, borderColor: "#E5E7EB", borderRadius: 16, backgroundColor: "#fff", marginBottom: 12 },
+  field: {
+    position: "relative",
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    borderRadius: 16,
+    backgroundColor: "#fff",
+    marginBottom: 12,
+  },
   input: { height: 56, paddingHorizontal: 16, fontSize: 16, color: colors.text },
-  eyeBtn: { position: "absolute", right: 14, top: 0, height: 56, justifyContent: "center", alignItems: "center" },
+  eyeBtn: {
+    position: "absolute",
+    right: 14,
+    top: 0,
+    height: 56,
+    justifyContent: "center",
+    alignItems: "center",
+  },
 
   forgotBtn: { alignItems: "center", marginTop: 6, marginBottom: 16 },
   forgotText: { fontSize: 13, color: colors.muted },
 
-  primaryBtn: { height: 58, borderRadius: 18, backgroundColor: colors.navy, justifyContent: "center", alignItems: "center" },
+  primaryBtn: {
+    height: 58,
+    borderRadius: 18,
+    backgroundColor: colors.navy,
+    justifyContent: "center",
+    alignItems: "center",
+  },
   primaryBtnText: { color: "#fff", fontSize: 18, fontWeight: "900" },
 
   bottomText: { color: colors.muted, fontSize: 13 },
