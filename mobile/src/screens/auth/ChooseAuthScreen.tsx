@@ -1,35 +1,46 @@
 import React from "react";
-import { Image, StyleSheet, Text, View } from "react-native";
-import Screen from "../../ui/Screen";
-import Button from "../../ui/Button";
-import { colors } from "../../core/colors";
+import { View, Image, Pressable, Text, StyleSheet } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useNavigation } from "@react-navigation/native";
 
-export default function ChooseAuthScreen({ navigation }: any) {
+const LOGO = require("../../../assets/zanai-logo.png");
+
+export default function ChooseAuthScreen() {
+  const insets = useSafeAreaInsets();
+  const navigation = useNavigation<any>();
+
   return (
-    <Screen>
+    <View style={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
       <View style={styles.top}>
-        <Image source={require("../../../assets/zanai-logo.png")} style={styles.logo} />
-      </View>
-
-      <View style={styles.center}>
-        <Text style={styles.brand}>ZanAI</Text>
+        <Image source={LOGO} style={styles.logo} />
       </View>
 
       <View style={styles.bottom}>
-        <Button title="Kiru" onPress={() => navigation.navigate("Login")} />
-        <View style={{ height: 12 }} />
-        <Button title="Tirkelu" onPress={() => navigation.navigate("Register")} />
+        <Pressable style={styles.btn} onPress={() => navigation.navigate("Login")}>
+          <Text style={styles.btnText}>Kiru</Text>
+        </Pressable>
+
+        <Pressable style={[styles.btn, { marginTop: 14 }]} onPress={() => navigation.navigate("Register")}>
+          <Text style={styles.btnText}>Tirkelu</Text>
+        </Pressable>
       </View>
-    </Screen>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  top: { alignItems: "center", paddingTop: 14 },
-  logo: { width: 170, height: 46, resizeMode: "contain" },
-
-  center: { flex: 1, justifyContent: "flex-end", alignItems: "center", paddingBottom: 22 },
-  brand: { fontSize: 20, fontWeight: "700", color: colors.text },
-
-  bottom: { paddingHorizontal: 22, paddingBottom: 32 },
+  container: { flex: 1, backgroundColor: "#fff" },
+  top: { flex: 1, alignItems: "center", justifyContent: "flex-start", paddingTop: 18 },
+  logo: { width: 160, height: 40, resizeMode: "contain" },
+  bottom: { paddingHorizontal: 20, paddingBottom: 18 },
+  btn: {
+    height: 58,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: "#0B0F1A",
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#fff",
+  },
+  btnText: { fontSize: 16, fontWeight: "700", color: "#0B0F1A" },
 });

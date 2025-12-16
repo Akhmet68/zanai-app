@@ -1,38 +1,50 @@
 import React, { useEffect } from "react";
-import { View, Text, Image, StyleSheet } from "react-native";
-import { NativeStackScreenProps } from "@react-navigation/native-stack";
-import { AuthStackParamList } from "../../app/navigation/navigation_root/AuthNavigator";
+import { View, Image, Pressable, Text, StyleSheet } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useNavigation } from "@react-navigation/native";
 
-type Props = NativeStackScreenProps<AuthStackParamList, "Splash">;
+const LOGO = require("../../../assets/zanai-logo.png");
 
-export default function SplashScreen({ navigation }: Props) {
+export default function SplashScreen() {
+  const insets = useSafeAreaInsets();
+  const navigation = useNavigation<any>();
+
+  // если хочешь авто-переход (можно убрать)
   useEffect(() => {
     const t = setTimeout(() => {
-      navigation.replace("Onboarding"); 
-    }, 900);
-
+      navigation.replace("ChooseAuth");
+    }, 800);
     return () => clearTimeout(t);
   }, [navigation]);
 
   return (
-    <View style={styles.container}>
-      <Image
-        source={require("../../../assets/zanai-logo.png")}
-        style={styles.logo}
-      />
+    <View style={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
+      <View style={styles.top}>
+        <Image source={LOGO} style={styles.logo} />
+      </View>
 
-      <View style={styles.center}>
-        <Text style={styles.title}>ZanAI</Text>
-        <Text style={styles.subtitle}>Загрузка...</Text>
+      <View style={styles.bottom}>
+        <Pressable style={styles.primaryBtn} onPress={() => navigation.replace("ChooseAuth")}>
+          <Text style={styles.primaryBtnText}>Bastau</Text>
+        </Pressable>
       </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#fff", alignItems: "center" },
-  logo: { width: 160, height: 44, marginTop: 56, resizeMode: "contain" },
-  center: { flex: 1, justifyContent: "center", alignItems: "center" },
-  title: { fontSize: 34, fontWeight: "700" },
-  subtitle: { marginTop: 8, fontSize: 16, opacity: 0.6 },
+  container: { flex: 1, backgroundColor: "#fff" },
+  top: { flex: 1, alignItems: "center", justifyContent: "flex-start", paddingTop: 18 },
+  logo: { width: 160, height: 40, resizeMode: "contain" },
+  bottom: { paddingHorizontal: 20, paddingBottom: 18 },
+  primaryBtn: {
+    height: 58,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: "#0B0F1A",
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#fff",
+  },
+  primaryBtnText: { fontSize: 16, fontWeight: "700", color: "#0B0F1A" },
 });

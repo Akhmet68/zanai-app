@@ -9,12 +9,20 @@ import ProfileScreen from "../../../screens/profile/ProfileScreen";
 
 import CustomTabBar from "../../../ui/CustomTabBar";
 
-const Tab = createBottomTabNavigator();
+export type TabParamList = {
+  Home: undefined;
+  Laws: undefined;
+  AI: undefined;
+  Cases: undefined;
+  Profile: undefined;
+};
+
+const Tab = createBottomTabNavigator<TabParamList>();
 
 export default function TabNavigator() {
   return (
     <Tab.Navigator
-      screenOptions={{ headerShown: false }}
+      screenOptions={{ headerShown: false, tabBarHideOnKeyboard: true }}
       tabBar={(props) => <CustomTabBar {...props} />}
     >
       <Tab.Screen name="Home" component={NewsHomeScreen} />
