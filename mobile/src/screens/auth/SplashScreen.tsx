@@ -1,50 +1,32 @@
 import React, { useEffect } from "react";
-import { View, Image, Pressable, Text, StyleSheet } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { View, Image, StyleSheet, ActivityIndicator } from "react-native";
 import { useNavigation } from "@react-navigation/native";
+import Screen from "../../ui/Screen";
+import { colors } from "../../core/colors";
 
 const LOGO = require("../../../assets/zanai-logo.png");
 
 export default function SplashScreen() {
-  const insets = useSafeAreaInsets();
   const navigation = useNavigation<any>();
 
-  // если хочешь авто-переход (можно убрать)
   useEffect(() => {
     const t = setTimeout(() => {
-      navigation.replace("ChooseAuth");
-    }, 800);
+      navigation.replace("Onboarding");
+    }, 900);
     return () => clearTimeout(t);
   }, [navigation]);
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
-      <View style={styles.top}>
+    <Screen contentStyle={{ paddingTop: 0 }}>
+      <View style={styles.center}>
         <Image source={LOGO} style={styles.logo} />
+        <ActivityIndicator style={{ marginTop: 18 }} color={colors.navy} />
       </View>
-
-      <View style={styles.bottom}>
-        <Pressable style={styles.primaryBtn} onPress={() => navigation.replace("ChooseAuth")}>
-          <Text style={styles.primaryBtnText}>Bastau</Text>
-        </Pressable>
-      </View>
-    </View>
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#fff" },
-  top: { flex: 1, alignItems: "center", justifyContent: "flex-start", paddingTop: 18 },
-  logo: { width: 160, height: 40, resizeMode: "contain" },
-  bottom: { paddingHorizontal: 20, paddingBottom: 18 },
-  primaryBtn: {
-    height: 58,
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: "#0B0F1A",
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: "#fff",
-  },
-  primaryBtnText: { fontSize: 16, fontWeight: "700", color: "#0B0F1A" },
+  center: { flex: 1, justifyContent: "center", alignItems: "center" },
+  logo: { width: 190, height: 46, resizeMode: "contain" },
 });

@@ -1,33 +1,73 @@
 import React from "react";
-import { Image, StyleSheet, Text, View } from "react-native";
+import { View, Text, Pressable, StyleSheet, Image } from "react-native";
+import { useNavigation } from "@react-navigation/native";
 import Screen from "../../ui/Screen";
-import Button from "../../ui/Button";
 import { colors } from "../../core/colors";
 
-export default function OnboardingScreen({ navigation }: any) {
-  return (
-    <Screen>
-      <View style={styles.top}>
-        <Image source={require("../../../assets/zanai-logo.png")} style={styles.logo} />
-      </View>
+const LOGO = require("../../../assets/zanai-logo.png");
 
-      <View style={styles.bottom}>
+export default function OnboardingScreen() {
+  const navigation = useNavigation<any>();
+
+  return (
+    <Screen contentStyle={{ paddingTop: 0 }}>
+      <View style={styles.wrap}>
+        <Image source={LOGO} style={styles.logo} />
+
         <Text style={styles.title}>ZanAI</Text>
-        <Text style={styles.subtitle}>
-          Юридический помощник: AI чат, ДТП, документы и кейсы.
+        <Text style={styles.sub}>
+          Помощник по законам РК: новости, статьи и AI-чат.
         </Text>
 
-        <Button title="Bastau" onPress={() => navigation.navigate("ChooseAuth")} />
+        <Pressable
+          onPress={() => navigation.replace("ChooseAuth")}
+          style={({ pressed }) => [styles.primary, pressed && { opacity: 0.9 }]}
+        >
+          <Text style={styles.primaryText}>Продолжить</Text>
+        </Pressable>
+
+        <Pressable onPress={() => navigation.replace("ChooseAuth")}>
+          <Text style={styles.skip}>Пропустить</Text>
+        </Pressable>
       </View>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  top: { alignItems: "center", paddingTop: 14 },
-  logo: { width: 170, height: 46, resizeMode: "contain" },
+  wrap: { flex: 1, paddingHorizontal: 20, justifyContent: "center" },
+  logo: { width: 200, height: 48, resizeMode: "contain", alignSelf: "center" },
 
-  bottom: { marginTop: "auto", paddingHorizontal: 22, paddingBottom: 32 },
-  title: { fontSize: 32, fontWeight: "800", color: colors.text, marginBottom: 6 },
-  subtitle: { color: colors.muted, fontSize: 15, marginBottom: 18 },
+  title: {
+    marginTop: 18,
+    fontSize: 34,
+    fontWeight: "900",
+    color: colors.text,
+    textAlign: "center",
+  },
+  sub: {
+    marginTop: 8,
+    fontSize: 14,
+    color: colors.muted,
+    textAlign: "center",
+    lineHeight: 20,
+    marginBottom: 18,
+  },
+
+  primary: {
+    height: 56,
+    borderRadius: 18,
+    backgroundColor: colors.navy,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 8,
+  },
+  primaryText: { color: "#fff", fontSize: 16, fontWeight: "900" },
+
+  skip: {
+    marginTop: 14,
+    textAlign: "center",
+    color: colors.muted,
+    fontWeight: "800",
+  },
 });
