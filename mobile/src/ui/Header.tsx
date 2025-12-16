@@ -43,41 +43,39 @@ export default function Header({
 const styles = StyleSheet.create({
   wrap: {
     paddingHorizontal: 16,
-    paddingTop: 6,
-    paddingBottom: 12,
+    paddingTop: 8,
+    paddingBottom: 10,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
   },
+
   logo: {
-    height: 22,
-    width: 110,
+    height: 30,
+    width: 150,
     resizeMode: "contain",
   },
-  right: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-  },
+
+  right: { flexDirection: "row", alignItems: "center", gap: 10 },
   rightPlaceholder: { width: 40, height: 40 },
 
   langBtn: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    borderRadius: 14,
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: colors.white,
   },
-  langText: { color: colors.text, fontWeight: "700", fontSize: 12 },
+  langText: { color: colors.text, fontWeight: "800", fontSize: 12 },
 
   iconBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 14,
+    width: 44,
+    height: 44,
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: colors.border,
     alignItems: "center",
