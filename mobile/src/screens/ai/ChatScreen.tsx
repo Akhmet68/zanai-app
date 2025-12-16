@@ -21,6 +21,7 @@ const LOGO = require("../../../assets/zanai-logo.png");
 export default function ChatScreen() {
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<Msg[]>([]);
+
   const data = useMemo(() => messages, [messages]);
 
   const send = () => {
@@ -34,7 +35,7 @@ export default function ChatScreen() {
 
   return (
     <Screen contentStyle={{ paddingTop: 0 }}>
-      {/* Header как в макете */}
+      {/* Header */}
       <View style={styles.header}>
         <Pressable onPress={() => {}} hitSlop={12} style={styles.menuBtn}>
           <Ionicons name="menu" size={26} color={colors.text} />
@@ -43,25 +44,19 @@ export default function ChatScreen() {
         <Image source={LOGO} style={styles.logo} />
       </View>
 
-      {/* divider */}
       <View style={styles.divider} />
 
-      {/* Память включена */}
       <View style={styles.memoryRow}>
         <Ionicons name="pencil-outline" size={14} color={colors.muted} />
         <Text style={styles.memoryText}>Память включена</Text>
-        <Ionicons
-          name="information-circle-outline"
-          size={16}
-          color={colors.muted}
-        />
+        <Ionicons name="information-circle-outline" size={16} color={colors.muted} />
       </View>
 
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === "ios" ? "padding" : undefined}
       >
-        {/* Чат */}
+        {/* Chat list */}
         <FlatList
           style={{ flex: 1 }}
           data={data}
@@ -88,7 +83,7 @@ export default function ChatScreen() {
           ListEmptyComponent={<View style={{ flex: 1 }} />}
         />
 
-        {/* Низ как в макете */}
+        {/* Bottom area */}
         <View style={styles.footer}>
           <View style={styles.quickRow}>
             <Pressable style={styles.quickCard} onPress={() => {}}>
@@ -149,13 +144,9 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     marginRight: 8,
   },
-  // логотип крупнее
   logo: { height: 26, width: 140, resizeMode: "contain" },
 
-  divider: {
-    height: 1,
-    backgroundColor: colors.border,
-  },
+  divider: { height: 1, backgroundColor: colors.border },
 
   memoryRow: {
     flexDirection: "row",
@@ -211,10 +202,7 @@ const styles = StyleSheet.create({
   quickTitle: { fontSize: 12, fontWeight: "800", color: colors.text },
   quickSub: { marginTop: 2, fontSize: 11, color: colors.muted },
 
-  promptRow: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
+  promptRow: { flexDirection: "row", alignItems: "center" },
   plusBtn: {
     width: 44,
     height: 44,
