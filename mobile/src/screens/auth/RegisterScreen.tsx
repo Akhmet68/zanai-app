@@ -61,15 +61,18 @@ export default function RegisterScreen() {
   const [showPass, setShowPass] = useState(false);
 
   const onRegister = () => {
-    if (!name.trim() || !email.trim() || !password.trim()) {
-      Alert.alert("Ошибка", "Заполни имя, почту и пароль.");
-      return;
-    }
+    const n = name.trim();
+    const e = email.trim();
+    const p = password.trim();
+    if (!n || !e || !p) return Alert.alert("Ошибка", "Заполни имя, почту и пароль.");
+    if (n.length < 2) return Alert.alert("Ошибка", "Имя слишком короткое.");
+    if (!e.includes("@")) return Alert.alert("Ошибка", "Почта выглядит некорректно.");
+    if (p.length < 6) return Alert.alert("Ошибка", "Пароль минимум 6 символов.");
     setIsAuthed(true);
   };
 
   return (
-    <Screen contentStyle={{ paddingTop: 0 }}>
+    <Screen contentStyle={{ paddingTop: 0 }} edges={["left", "right"]}>
       <KeyboardAvoidingView
         style={{ flex: 1, backgroundColor: colors.white }}
         behavior={Platform.OS === "ios" ? "padding" : undefined}
@@ -88,20 +91,15 @@ export default function RegisterScreen() {
             showsVerticalScrollIndicator={false}
           >
             <View style={styles.topBar}>
-              <Pressable
-                onPress={() => navigation.goBack()}
-                hitSlop={12}
-                style={styles.backBtn}
-              >
+              <Pressable onPress={() => navigation.goBack()} hitSlop={12} style={styles.backBtn}>
                 <Ionicons name="chevron-back" size={28} color={colors.text} />
               </Pressable>
-
               <Image source={LOGO} style={styles.logo} />
             </View>
 
             <View style={{ height: 10 }} />
 
-            <Text style={styles.title}>Tirkelu</Text>
+            <Text style={styles.title}>Тіркелу</Text>
             <Text style={styles.subtitle}>Жаңа аккаунт жасаңыз</Text>
 
             <SocialButton
@@ -126,7 +124,7 @@ export default function RegisterScreen() {
               <TextInput
                 value={name}
                 onChangeText={setName}
-                placeholder="Esiminiz"
+                placeholder="Атыңыз"
                 placeholderTextColor="#9AA3AF"
                 autoCapitalize="words"
                 style={styles.input}
@@ -137,7 +135,7 @@ export default function RegisterScreen() {
               <TextInput
                 value={email}
                 onChangeText={setEmail}
-                placeholder="Poshtanyz"
+                placeholder="Поштаңыз (email)"
                 placeholderTextColor="#9AA3AF"
                 autoCapitalize="none"
                 autoCorrect={false}
@@ -150,19 +148,15 @@ export default function RegisterScreen() {
               <TextInput
                 value={password}
                 onChangeText={setPassword}
-                placeholder="Qupiya soz"
+                placeholder="Құпия сөз"
                 placeholderTextColor="#9AA3AF"
                 autoCapitalize="none"
                 autoCorrect={false}
                 secureTextEntry={!showPass}
-                style={[styles.input, { paddingRight: 48 }]}
+                style={[styles.input, { paddingRight: 52 }]}
               />
 
-              <Pressable
-                onPress={() => setShowPass((v) => !v)}
-                hitSlop={12}
-                style={styles.eyeBtn}
-              >
+              <Pressable onPress={() => setShowPass((v) => !v)} hitSlop={12} style={styles.eyeBtn}>
                 <Ionicons
                   name={showPass ? "eye-off-outline" : "eye-outline"}
                   size={22}
@@ -171,23 +165,17 @@ export default function RegisterScreen() {
               </Pressable>
             </View>
 
-            <Pressable onPress={onRegister} style={styles.primaryBtn}>
-              <Text style={styles.primaryBtnText}>Akkount jasau</Text>
+            <Pressable onPress={onRegister} style={({ pressed }) => [styles.primaryBtn, pressed && { opacity: 0.92 }]}>
+              <Text style={styles.primaryBtnText}>Аккаунт жасау</Text>
             </Pressable>
 
-            <Pressable
-              onPress={() => navigation.navigate("Login")}
-              style={{ marginTop: 14, alignItems: "center" }}
-            >
+            <Pressable onPress={() => navigation.navigate("Login")} style={{ marginTop: 14, alignItems: "center" }}>
               <Text style={styles.bottomText}>
-                Juiede barsýn ba? <Text style={styles.link}>kiru</Text>
+                Аккаунт бар ма? <Text style={styles.link}>Кіру</Text>
               </Text>
             </Pressable>
 
-            <Pressable
-              onPress={() => setIsAuthed(true)}
-              style={{ marginTop: 14, alignItems: "center" }}
-            >
+            <Pressable onPress={() => setIsAuthed(true)} style={{ marginTop: 14, alignItems: "center" }}>
               <Text style={styles.guest}>Кірусіз жалғастыру</Text>
             </Pressable>
 
@@ -209,23 +197,10 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "flex-start",
   },
-  logo: { height: 28, width: 165, resizeMode: "contain" },
+  logo: { height: 30, width: 175, resizeMode: "contain" },
 
-  title: {
-    fontSize: 28,
-    fontWeight: "900",
-    textAlign: "center",
-    color: colors.text,
-    marginBottom: 6,
-    marginTop: 6,
-  },
-  subtitle: {
-    textAlign: "center",
-    color: colors.muted,
-    fontSize: 13,
-    marginBottom: 14,
-    lineHeight: 18,
-  },
+  title: { fontSize: 28, fontWeight: "900", textAlign: "center", color: colors.text, marginBottom: 6, marginTop: 6 },
+  subtitle: { textAlign: "center", color: colors.muted, fontSize: 13, marginBottom: 14, lineHeight: 18 },
 
   socialBtn: {
     height: 54,
@@ -245,32 +220,11 @@ const styles = StyleSheet.create({
   orLine: { flex: 1, height: 1, backgroundColor: colors.border },
   orText: { fontSize: 12, color: colors.muted, fontWeight: "800" },
 
-  field: {
-    position: "relative",
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
-    borderRadius: 16,
-    backgroundColor: "#fff",
-    marginBottom: 12,
-  },
+  field: { position: "relative", borderWidth: 1, borderColor: "#E5E7EB", borderRadius: 16, backgroundColor: "#fff", marginBottom: 12 },
   input: { height: 56, paddingHorizontal: 16, fontSize: 16, color: colors.text },
-  eyeBtn: {
-    position: "absolute",
-    right: 14,
-    top: 0,
-    height: 56,
-    justifyContent: "center",
-    alignItems: "center",
-  },
+  eyeBtn: { position: "absolute", right: 14, top: 0, height: 56, justifyContent: "center", alignItems: "center" },
 
-  primaryBtn: {
-    height: 58,
-    borderRadius: 18,
-    backgroundColor: colors.navy,
-    justifyContent: "center",
-    alignItems: "center",
-    marginTop: 4,
-  },
+  primaryBtn: { height: 58, borderRadius: 18, backgroundColor: colors.navy, justifyContent: "center", alignItems: "center", marginTop: 4 },
   primaryBtnText: { color: "#fff", fontSize: 18, fontWeight: "900" },
 
   bottomText: { color: colors.muted, fontSize: 13 },

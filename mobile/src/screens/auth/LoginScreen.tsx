@@ -60,15 +60,16 @@ export default function LoginScreen() {
   const [showPass, setShowPass] = useState(false);
 
   const onLogin = () => {
-    if (!email.trim() || !password.trim()) {
-      Alert.alert("Ошибка", "Заполни почту и пароль.");
-      return;
-    }
+    const e = email.trim();
+    const p = password.trim();
+    if (!e || !p) return Alert.alert("Ошибка", "Заполни почту и пароль.");
+    if (!e.includes("@")) return Alert.alert("Ошибка", "Почта выглядит некорректно.");
+    if (p.length < 6) return Alert.alert("Ошибка", "Пароль минимум 6 символов.");
     setIsAuthed(true);
   };
 
   return (
-    <Screen contentStyle={{ paddingTop: 0 }}>
+    <Screen contentStyle={{ paddingTop: 0 }} edges={["left", "right"]}>
       <KeyboardAvoidingView
         style={{ flex: 1, backgroundColor: colors.white }}
         behavior={Platform.OS === "ios" ? "padding" : undefined}
@@ -86,25 +87,17 @@ export default function LoginScreen() {
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
           >
-            {/* Top bar */}
             <View style={styles.topBar}>
-              <Pressable
-                onPress={() => navigation.goBack()}
-                hitSlop={12}
-                style={styles.backBtn}
-              >
+              <Pressable onPress={() => navigation.goBack()} hitSlop={12} style={styles.backBtn}>
                 <Ionicons name="chevron-back" size={28} color={colors.text} />
               </Pressable>
-
               <Image source={LOGO} style={styles.logo} />
             </View>
 
             <View style={{ height: 10 }} />
 
-            <Text style={styles.title}>Kiru</Text>
-            <Text style={styles.subtitle}>
-              Apple/Google арқылы немесе пошта арқылы кіріңіз
-            </Text>
+            <Text style={styles.title}>Кіру</Text>
+            <Text style={styles.subtitle}>Apple/Google арқылы немесе пошта арқылы кіріңіз</Text>
 
             <SocialButton
               icon="logo-apple"
@@ -128,7 +121,7 @@ export default function LoginScreen() {
               <TextInput
                 value={email}
                 onChangeText={setEmail}
-                placeholder="Esim/poshta"
+                placeholder="Поштаңыз (email)"
                 placeholderTextColor="#9AA3AF"
                 autoCapitalize="none"
                 autoCorrect={false}
@@ -141,19 +134,14 @@ export default function LoginScreen() {
               <TextInput
                 value={password}
                 onChangeText={setPassword}
-                placeholder="Qupiya soz"
+                placeholder="Құпия сөз"
                 placeholderTextColor="#9AA3AF"
                 autoCapitalize="none"
                 autoCorrect={false}
                 secureTextEntry={!showPass}
-                style={[styles.input, { paddingRight: 48 }]}
+                style={[styles.input, { paddingRight: 52 }]}
               />
-
-              <Pressable
-                onPress={() => setShowPass((v) => !v)}
-                hitSlop={12}
-                style={styles.eyeBtn}
-              >
+              <Pressable onPress={() => setShowPass((v) => !v)} hitSlop={12} style={styles.eyeBtn}>
                 <Ionicons
                   name={showPass ? "eye-off-outline" : "eye-outline"}
                   size={22}
@@ -166,26 +154,20 @@ export default function LoginScreen() {
               onPress={() => Alert.alert("Скоро", "Восстановление пароля подключим после бэка.")}
               style={styles.forgotBtn}
             >
-              <Text style={styles.forgotText}>Qupiya sozdi qaja ondeu</Text>
+              <Text style={styles.forgotText}>Құпия сөзді қалпына келтіру</Text>
             </Pressable>
 
-            <Pressable onPress={onLogin} style={styles.primaryBtn}>
-              <Text style={styles.primaryBtnText}>Juiege kiru</Text>
+            <Pressable onPress={onLogin} style={({ pressed }) => [styles.primaryBtn, pressed && { opacity: 0.92 }]}>
+              <Text style={styles.primaryBtnText}>Жүйеге кіру</Text>
             </Pressable>
 
-            <Pressable
-              onPress={() => navigation.navigate("Register")}
-              style={{ marginTop: 14, alignItems: "center" }}
-            >
+            <Pressable onPress={() => navigation.navigate("Register")} style={{ marginTop: 14, alignItems: "center" }}>
               <Text style={styles.bottomText}>
-                Juiede joqsýn ba? <Text style={styles.link}>tirkelu</Text>
+                Аккаунт жоқ па? <Text style={styles.link}>Тіркелу</Text>
               </Text>
             </Pressable>
 
-            <Pressable
-              onPress={() => setIsAuthed(true)}
-              style={{ marginTop: 14, alignItems: "center" }}
-            >
+            <Pressable onPress={() => setIsAuthed(true)} style={{ marginTop: 14, alignItems: "center" }}>
               <Text style={styles.guest}>Кірусіз жалғастыру</Text>
             </Pressable>
 
@@ -207,23 +189,10 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "flex-start",
   },
-  logo: { height: 28, width: 165, resizeMode: "contain" },
+  logo: { height: 30, width: 175, resizeMode: "contain" },
 
-  title: {
-    fontSize: 28,
-    fontWeight: "900",
-    textAlign: "center",
-    color: colors.text,
-    marginBottom: 6,
-    marginTop: 6,
-  },
-  subtitle: {
-    textAlign: "center",
-    color: colors.muted,
-    fontSize: 13,
-    marginBottom: 14,
-    lineHeight: 18,
-  },
+  title: { fontSize: 28, fontWeight: "900", textAlign: "center", color: colors.text, marginBottom: 6, marginTop: 6 },
+  subtitle: { textAlign: "center", color: colors.muted, fontSize: 13, marginBottom: 14, lineHeight: 18 },
 
   socialBtn: {
     height: 54,
@@ -252,25 +221,12 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   input: { height: 56, paddingHorizontal: 16, fontSize: 16, color: colors.text },
-  eyeBtn: {
-    position: "absolute",
-    right: 14,
-    top: 0,
-    height: 56,
-    justifyContent: "center",
-    alignItems: "center",
-  },
+  eyeBtn: { position: "absolute", right: 14, top: 0, height: 56, justifyContent: "center", alignItems: "center" },
 
   forgotBtn: { alignItems: "center", marginTop: 6, marginBottom: 16 },
   forgotText: { fontSize: 13, color: colors.muted },
 
-  primaryBtn: {
-    height: 58,
-    borderRadius: 18,
-    backgroundColor: colors.navy,
-    justifyContent: "center",
-    alignItems: "center",
-  },
+  primaryBtn: { height: 58, borderRadius: 18, backgroundColor: colors.navy, justifyContent: "center", alignItems: "center" },
   primaryBtnText: { color: "#fff", fontSize: 18, fontWeight: "900" },
 
   bottomText: { color: colors.muted, fontSize: 13 },

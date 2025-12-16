@@ -62,14 +62,14 @@ export default function Header({
 const styles = StyleSheet.create({
   wrap: {
     paddingHorizontal: 16,
-    paddingTop: 8,
+    paddingTop: 6,
     paddingBottom: 10,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
   },
 
-  left: { flexDirection: "row", alignItems: "center", gap: 10 },
+  left: { flexDirection: "row", alignItems: "center", gap: 10, flex: 1 },
   leftBtn: {
     width: 42,
     height: 42,
@@ -83,8 +83,8 @@ const styles = StyleSheet.create({
   leftPlaceholder: { width: 42, height: 42 },
 
   logo: {
-    height: 34,
-    width: 170,
+    height: 36,
+    width: 190,
     resizeMode: "contain",
   },
 

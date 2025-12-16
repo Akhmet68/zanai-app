@@ -10,7 +10,15 @@ import { colors } from "../../core/colors";
 
 const LOGO = require("../../../assets/zanai-logo.png");
 
-function Feature({ icon, title, desc }: { icon: keyof typeof Ionicons.glyphMap; title: string; desc: string }) {
+function Feature({
+  icon,
+  title,
+  desc,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  title: string;
+  desc: string;
+}) {
   return (
     <View style={styles.feature}>
       <View style={styles.featureIcon}>
@@ -29,19 +37,21 @@ export default function OnboardingScreen() {
   const insets = useSafeAreaInsets();
 
   return (
-    <Screen contentStyle={{ paddingTop: 0 }}>
+    <Screen contentStyle={{ paddingTop: 0 }} edges={["left", "right"]}>
       <LinearGradient
-        colors={["#0B1E5B", "#1B2C63", "#FFFFFF"]}
-        locations={[0, 0.55, 1]}
-        style={[styles.bg, { paddingTop: insets.top + 14, paddingBottom: insets.bottom + 16 }]}
+        colors={["#0B1E5B", "#162A63", "#FFFFFF"]}
+        locations={[0, 0.62, 1]}
+        style={[styles.bg, { paddingTop: insets.top + 14, paddingBottom: insets.bottom + 18 }]}
       >
+        {/* декоративные “шары” */}
+        <View pointerEvents="none" style={[styles.orb, styles.orbA]} />
+        <View pointerEvents="none" style={[styles.orb, styles.orbB]} />
+
         <View style={styles.wrap}>
           <Image source={LOGO} style={styles.logo} />
 
           <Text style={styles.title}>ZanAI</Text>
-          <Text style={styles.sub}>
-            Помощник по законам РК: новости, статьи и AI-чат.
-          </Text>
+          <Text style={styles.sub}>Помощник по законам РК: новости, статьи и AI-чат.</Text>
 
           <View style={styles.card}>
             <Feature
@@ -83,7 +93,16 @@ const styles = StyleSheet.create({
   bg: { flex: 1 },
   wrap: { flex: 1, paddingHorizontal: 20, justifyContent: "center" },
 
-  logo: { width: 240, height: 58, resizeMode: "contain", alignSelf: "center" },
+  orb: {
+    position: "absolute",
+    borderRadius: 999,
+    opacity: 0.12,
+    backgroundColor: "#FFFFFF",
+  },
+  orbA: { width: 220, height: 220, top: 40, right: -80 },
+  orbB: { width: 160, height: 160, bottom: 80, left: -60 },
+
+  logo: { width: 250, height: 62, resizeMode: "contain", alignSelf: "center" },
 
   title: {
     marginTop: 14,
@@ -134,9 +153,5 @@ const styles = StyleSheet.create({
   },
   primaryText: { color: "#fff", fontSize: 16, fontWeight: "900" },
 
-  skip: {
-    textAlign: "center",
-    color: colors.muted,
-    fontWeight: "800",
-  },
+  skip: { textAlign: "center", color: colors.muted, fontWeight: "800" },
 });
