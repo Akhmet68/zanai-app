@@ -30,6 +30,6 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
-    paddingTop: 8, // <-- универсальный "воздух" сверху для всех экранов
+    paddingTop: 8,
   },
 });

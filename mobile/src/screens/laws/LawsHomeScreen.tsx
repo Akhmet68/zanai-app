@@ -15,8 +15,13 @@ export default function LawsHomeScreen() {
 const styles = StyleSheet.create({
   container: {
     paddingHorizontal: 16,
-    paddingTop: 12, // можно подогнать под макет
+    paddingTop: 12,
   },
-  title: { fontSize: 22, fontWeight: "800", marginBottom: 8, color: colors.text },
+  title: {
+    fontSize: 28,
+    fontWeight: "900",
+    marginBottom: 8,
+    color: colors.text,
+  },
   text: { color: colors.muted },
 });

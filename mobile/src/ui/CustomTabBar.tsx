@@ -5,6 +5,9 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { colors } from "../core/colors";
 
+export const TAB_BAR_HEIGHT = 66; // высота "плашки"
+export const TAB_BAR_TOP_GAP = 8; // воздух над плашкой
+
 const ICONS_OUTLINE: Record<string, keyof typeof Ionicons.glyphMap> = {
   Home: "home-outline",
   Laws: "document-text-outline",
@@ -29,8 +32,16 @@ export default function CustomTabBar({
   const bottomPad = Math.max(insets.bottom, 10);
 
   return (
-    <View style={[styles.container, { paddingBottom: bottomPad }]}>
-      <View style={styles.bar}>
+    <View
+      pointerEvents="box-none"
+      style={[
+        styles.container,
+        {
+          paddingBottom: bottomPad,
+        },
+      ]}
+    >
+      <View style={styles.bar} pointerEvents="auto">
         {state.routes.map((route, index) => {
           const isFocused = state.index === index;
 
@@ -53,7 +64,7 @@ export default function CustomTabBar({
             });
           };
 
-          // Центр. кнопка Ai (как в макете)
+          // Центр. кнопка Ai
           if (route.name === "AI") {
             return (
               <View key={route.key} style={styles.aiSlot}>
@@ -104,14 +115,21 @@ export default function CustomTabBar({
 }
 
 const styles = StyleSheet.create({
+  // ВАЖНО: absolute, чтобы таббар не “сжимал” экран и не ломал SafeArea сверху
   container: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+
     backgroundColor: "transparent",
-    paddingTop: 8,
+    paddingTop: TAB_BAR_TOP_GAP,
     alignItems: "center",
   },
+
   bar: {
     width: "92%",
-    height: 66,
+    height: TAB_BAR_HEIGHT,
     backgroundColor: colors.white,
     borderRadius: 22,
     borderWidth: 1,
@@ -131,6 +149,7 @@ const styles = StyleSheet.create({
       android: { elevation: 6 },
     }),
   },
+
   item: {
     width: 56,
     height: 56,

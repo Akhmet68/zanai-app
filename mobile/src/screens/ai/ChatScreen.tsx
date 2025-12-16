@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -8,15 +8,20 @@ import {
   StyleSheet,
   KeyboardAvoidingView,
   Platform,
+  Keyboard,
 } from "react-native";
 import Screen from "../../ui/Screen";
 import { colors } from "../../core/colors";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { TAB_BAR_HEIGHT, TAB_BAR_TOP_GAP } from "../../ui/CustomTabBar";
 
 type Msg = { id: string; role: "user" | "assistant"; text: string };
 
 export default function ChatScreen() {
   const insets = useSafeAreaInsets();
+  const listRef = useRef<FlatList<Msg>>(null);
+
+  const [keyboardShown, setKeyboardShown] = useState(false);
 
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<Msg[]>([
@@ -28,6 +33,27 @@ export default function ChatScreen() {
   ]);
 
   const data = useMemo(() => messages, [messages]);
+
+  // реальная “занимаемая зона” таббара снизу (плашка + отступы + safe-area)
+  const bottomPad = Math.max(insets.bottom, 10);
+  const tabBarFootprint = TAB_BAR_HEIGHT + TAB_BAR_TOP_GAP + bottomPad;
+
+  // когда клавиатура открыта — tabBarHideOnKeyboard скрывает таббар,
+  // значит отступ под него убираем, чтобы чат не “висел” слишком высоко
+  const bottomOffset = keyboardShown ? 0 : tabBarFootprint;
+
+  useEffect(() => {
+    const show = Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
+    const hide = Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
+
+    const subShow = Keyboard.addListener(show, () => setKeyboardShown(true));
+    const subHide = Keyboard.addListener(hide, () => setKeyboardShown(false));
+
+    return () => {
+      subShow.remove();
+      subHide.remove();
+    };
+  }, []);
 
   const send = async () => {
     const trimmed = input.trim();
@@ -45,26 +71,32 @@ export default function ChatScreen() {
         "Понял. Я формирую предварительный ответ. (Демо)\n\nДальше подключим сервер и ИИ.",
     };
     setMessages((prev) => [...prev, botMsg]);
-  };
 
-  // чтобы низ (инпут) не конфликтовал с TabBar
-  const bottomPad = Math.max(insets.bottom, 10);
+    requestAnimationFrame(() => {
+      listRef.current?.scrollToEnd({ animated: true });
+    });
+  };
 
   return (
     <Screen>
       <KeyboardAvoidingView
-        style={styles.flex}
+        style={{ flex: 1 }}
         behavior={Platform.OS === "ios" ? "padding" : undefined}
-        keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 0}
       >
         <View style={styles.container}>
           <Text style={styles.title}>AI Помощник</Text>
 
           <FlatList
+            ref={listRef}
             data={data}
             keyExtractor={(m) => m.id}
             showsVerticalScrollIndicator={false}
-            contentContainerStyle={{ paddingTop: 8, paddingBottom: 14 }}
+            keyboardShouldPersistTaps="handled"
+            style={{ flex: 1 }}
+            contentContainerStyle={{
+              paddingTop: 10,
+              paddingBottom: bottomOffset + 90, // место под инпут + таббар (когда он виден)
+            }}
             renderItem={({ item }) => (
               <View
                 style={[
@@ -84,7 +116,16 @@ export default function ChatScreen() {
             )}
           />
 
-          <View style={[styles.inputWrap, { paddingBottom: bottomPad + 70 }]}>
+          {/* Composer */}
+          <View
+            style={[
+              styles.composer,
+              {
+                marginBottom: bottomOffset, // когда таббар виден — поднимаем над ним
+                paddingBottom: insets.bottom + 10,
+              },
+            ]}
+          >
             <View style={styles.inputRow}>
               <TextInput
                 value={input}
@@ -106,7 +147,6 @@ export default function ChatScreen() {
 }
 
 const styles = StyleSheet.create({
-  flex: { flex: 1 },
   container: { flex: 1, paddingHorizontal: 16, paddingTop: 10 },
   title: { fontSize: 28, fontWeight: "900", color: colors.text },
 
@@ -123,10 +163,11 @@ const styles = StyleSheet.create({
   userText: { color: "#fff" },
   assistantText: { color: "#111" },
 
-  inputWrap: {
+  composer: {
     borderTopWidth: 1,
     borderTopColor: "#EEE",
     paddingTop: 10,
+    backgroundColor: colors.bg,
   },
   inputRow: {
     flexDirection: "row",
