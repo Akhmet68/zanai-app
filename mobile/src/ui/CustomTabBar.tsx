@@ -1,23 +1,19 @@
 import React from "react";
-import { View, Pressable, StyleSheet, Text } from "react-native";
+import { View, Pressable, StyleSheet, Platform } from "react-native";
 import type { BottomTabBarProps } from "@react-navigation/bottom-tabs";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { colors } from "../core/colors";
 
-const ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
-  Home: "home-outline",
-  Laws: "document-text-outline",
-  AI: "sparkles-outline",
-  Cases: "grid-outline",
-  Profile: "person-outline",
+const ICONS: Record<string, { active: keyof typeof Ionicons.glyphMap; inactive: keyof typeof Ionicons.glyphMap }> = {
+  Home: { active: "home", inactive: "home-outline" },
+  Laws: { active: "document-text", inactive: "document-text-outline" },
+  AI: { active: "sparkles", inactive: "sparkles-outline" },
+  Cases: { active: "grid", inactive: "grid-outline" },
+  Profile: { active: "person", inactive: "person-outline" },
 };
 
-export default function CustomTabBar({
-  state,
-  descriptors,
-  navigation,
-}: BottomTabBarProps) {
+export default function CustomTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
   const bottomPad = Math.max(insets.bottom, 10);
 
@@ -40,13 +36,9 @@ export default function CustomTabBar({
           };
 
           const onLongPress = () => {
-            navigation.emit({
-              type: "tabLongPress",
-              target: route.key,
-            });
+            navigation.emit({ type: "tabLongPress", target: route.key });
           };
 
-          // Центр. кнопка Ai (как в макете)
           if (route.name === "AI") {
             return (
               <View key={route.key} style={styles.aiSlot}>
@@ -55,24 +47,31 @@ export default function CustomTabBar({
                   onLongPress={onLongPress}
                   style={({ pressed }) => [
                     styles.aiButton,
-                    pressed && { opacity: 0.85 },
+                    pressed && { transform: [{ translateY: -18 }, { scale: 0.96 }], opacity: 0.95 },
                   ]}
+                  accessibilityRole="button"
+                  accessibilityState={isFocused ? { selected: true } : {}}
+                  accessibilityLabel={descriptors[route.key]?.options?.tabBarAccessibilityLabel}
                 >
-                  <Text style={styles.aiText}>Ai</Text>
+                  <Ionicons name="sparkles" size={22} color="#FFFFFF" />
                 </Pressable>
               </View>
             );
           }
 
+          const cfg = ICONS[route.name] ?? { active: "ellipse", inactive: "ellipse-outline" };
+          const iconName = isFocused ? cfg.active : cfg.inactive;
           const color = isFocused ? colors.navy : colors.muted;
-          const iconName = ICONS[route.name] ?? "ellipse-outline";
 
           return (
             <Pressable
               key={route.key}
               onPress={onPress}
               onLongPress={onLongPress}
-              style={({ pressed }) => [styles.item, pressed && { opacity: 0.7 }]}
+              style={({ pressed }) => [
+                styles.item,
+                pressed && { opacity: 0.7, transform: [{ scale: 0.98 }] },
+              ]}
               accessibilityRole="button"
               accessibilityState={isFocused ? { selected: true } : {}}
               accessibilityLabel={descriptors[route.key]?.options?.tabBarAccessibilityLabel}
@@ -124,12 +123,12 @@ const styles = StyleSheet.create({
     backgroundColor: "#0B0B0B",
     alignItems: "center",
     justifyContent: "center",
-    transform: [{ translateY: -10 }], // чуть “вылезает” вверх как в макете
-  },
-  aiText: {
-    color: "#FFFFFF",
-    fontWeight: "800",
-    fontSize: 18,
-    letterSpacing: 0.5,
+    transform: [{ translateY: -18 }],
+
+    shadowColor: "#000",
+    shadowOpacity: 0.18,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: Platform.OS === "android" ? 10 : 0,
   },
 });
