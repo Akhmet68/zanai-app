@@ -31,11 +31,23 @@ export default function ChatScreen() {
     const now = Date.now();
     setMessages((p) => [...p, { id: String(now), role: "user", text: trimmed }]);
     setInput("");
+
+    // демо-ответ (чтобы чат выглядел живее)
+    setTimeout(() => {
+      setMessages((p) => [
+        ...p,
+        {
+          id: String(now + 1),
+          role: "assistant",
+          text: "Понял. Дай чуть больше деталей — и я помогу составить ответ/документ.",
+        },
+      ]);
+    }, 250);
   };
 
   return (
     <Screen contentStyle={{ paddingTop: 0 }}>
-      {/* Header */}
+      {/* Header (как в макете: меню слева, лого по центру) */}
       <View style={styles.header}>
         <Pressable onPress={() => {}} hitSlop={12} style={styles.menuBtn}>
           <Ionicons name="menu" size={26} color={colors.text} />
@@ -46,10 +58,15 @@ export default function ChatScreen() {
 
       <View style={styles.divider} />
 
+      {/* Memory row */}
       <View style={styles.memoryRow}>
         <Ionicons name="pencil-outline" size={14} color={colors.muted} />
         <Text style={styles.memoryText}>Память включена</Text>
-        <Ionicons name="information-circle-outline" size={16} color={colors.muted} />
+        <Ionicons
+          name="information-circle-outline"
+          size={16}
+          color={colors.muted}
+        />
       </View>
 
       <KeyboardAvoidingView
@@ -62,6 +79,7 @@ export default function ChatScreen() {
           data={data}
           keyExtractor={(m) => m.id}
           showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
           contentContainerStyle={styles.listContent}
           renderItem={({ item }) => (
             <View
@@ -111,6 +129,7 @@ export default function ChatScreen() {
                 style={styles.input}
                 returnKeyType="send"
                 onSubmitEditing={send}
+                blurOnSubmit={false}
               />
 
               <Pressable style={styles.pillIcon} onPress={() => {}}>
@@ -131,20 +150,23 @@ export default function ChatScreen() {
 const styles = StyleSheet.create({
   header: {
     paddingHorizontal: 16,
-    paddingTop: 6,
+    paddingTop: 2,
     paddingBottom: 10,
     backgroundColor: colors.white,
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "center",
   },
   menuBtn: {
+    position: "absolute",
+    left: 16,
     width: 36,
     height: 36,
     alignItems: "flex-start",
     justifyContent: "center",
-    marginRight: 8,
   },
-  logo: { height: 26, width: 140, resizeMode: "contain" },
+  // ✅ лого больше и заметнее
+  logo: { height: 30, width: 160, resizeMode: "contain" },
 
   divider: { height: 1, backgroundColor: colors.border },
 
@@ -194,19 +216,19 @@ const styles = StyleSheet.create({
     width: "48%",
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: 12,
-    paddingVertical: 10,
+    borderRadius: 14,
+    paddingVertical: 12,
     paddingHorizontal: 12,
     backgroundColor: colors.white,
   },
-  quickTitle: { fontSize: 12, fontWeight: "800", color: colors.text },
-  quickSub: { marginTop: 2, fontSize: 11, color: colors.muted },
+  quickTitle: { fontSize: 12, fontWeight: "900", color: colors.text },
+  quickSub: { marginTop: 3, fontSize: 11, color: colors.muted },
 
   promptRow: { flexDirection: "row", alignItems: "center" },
   plusBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 46,
+    height: 46,
+    borderRadius: 23,
     borderWidth: 1,
     borderColor: colors.border,
     alignItems: "center",
@@ -216,8 +238,8 @@ const styles = StyleSheet.create({
   },
   inputPill: {
     flex: 1,
-    height: 44,
-    borderRadius: 22,
+    height: 46,
+    borderRadius: 23,
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: colors.white,
