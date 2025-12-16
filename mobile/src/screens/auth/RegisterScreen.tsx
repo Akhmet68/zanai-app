@@ -12,6 +12,7 @@ import {
   TouchableWithoutFeedback,
   StyleSheet,
   Alert,
+  ActivityIndicator,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useNavigation } from "@react-navigation/native";
@@ -19,7 +20,7 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 
 import Screen from "../../ui/Screen";
 import { colors } from "../../core/colors";
-import { useAuth } from "../../app/auth/AuthContext";
+import { fbRegister } from "../../app/firebase/authService";
 
 const LOGO = require("../../../assets/zanai-logo.png");
 
@@ -50,25 +51,53 @@ function SocialButton({
   );
 }
 
+function authErrorToText(e: any) {
+  const code = e?.code;
+  switch (code) {
+    case "auth/email-already-in-use":
+      return "Эта почта уже зарегистрирована. Попробуй вход.";
+    case "auth/invalid-email":
+      return "Почта выглядит некорректно.";
+    case "auth/weak-password":
+      return "Слабый пароль. Минимум 6 символов.";
+    default:
+      return "Не удалось зарегистрироваться. Попробуй ещё раз.";
+  }
+}
+
 export default function RegisterScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<any>();
-  const { setIsAuthed } = useAuth();
 
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPass, setShowPass] = useState(false);
+  const [loading, setLoading] = useState(false);
 
-  const onRegister = () => {
+  const onRegister = async () => {
     const n = name.trim();
     const e = email.trim();
     const p = password.trim();
+
     if (!n || !e || !p) return Alert.alert("Ошибка", "Заполни имя, почту и пароль.");
     if (n.length < 2) return Alert.alert("Ошибка", "Имя слишком короткое.");
     if (!e.includes("@")) return Alert.alert("Ошибка", "Почта выглядит некорректно.");
     if (p.length < 6) return Alert.alert("Ошибка", "Пароль минимум 6 символов.");
-    setIsAuthed(true);
+
+    try {
+      setLoading(true);
+      await fbRegister(n, e, p);
+
+      Alert.alert(
+        "Почта отправлена ✅",
+        "Мы отправили письмо для подтверждения аккаунта. Проверь почту (и спам)."
+      );
+    } catch (err: any) {
+      Alert.alert("Ошибка регистрации", authErrorToText(err));
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -106,12 +135,12 @@ export default function RegisterScreen() {
               icon="logo-apple"
               text="Apple арқылы тіркелу"
               variant="dark"
-              onPress={() => Alert.alert("Скоро", "Apple Sign-In қосамыз (Dev Build арқылы).")}
+              onPress={() => Alert.alert("Скоро", "Apple Sign-In қосамыз кейінірек.")}
             />
             <SocialButton
               icon="logo-google"
               text="Google арқылы тіркелу"
-              onPress={() => Alert.alert("Скоро", "Google Sign-In қосамыз (Dev Build арқылы).")}
+              onPress={() => Alert.alert("Скоро", "Google Sign-In қосамыз кейінірек.")}
             />
 
             <View style={styles.orRow}>
@@ -165,18 +194,26 @@ export default function RegisterScreen() {
               </Pressable>
             </View>
 
-            <Pressable onPress={onRegister} style={({ pressed }) => [styles.primaryBtn, pressed && { opacity: 0.92 }]}>
-              <Text style={styles.primaryBtnText}>Аккаунт жасау</Text>
+            <Pressable
+              disabled={loading}
+              onPress={onRegister}
+              style={({ pressed }) => [
+                styles.primaryBtn,
+                pressed && { opacity: 0.92 },
+                loading && { opacity: 0.7 },
+              ]}
+            >
+              {loading ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.primaryBtnText}>Аккаунт жасау</Text>
+              )}
             </Pressable>
 
             <Pressable onPress={() => navigation.navigate("Login")} style={{ marginTop: 14, alignItems: "center" }}>
               <Text style={styles.bottomText}>
                 Аккаунт бар ма? <Text style={styles.link}>Кіру</Text>
               </Text>
-            </Pressable>
-
-            <Pressable onPress={() => setIsAuthed(true)} style={{ marginTop: 14, alignItems: "center" }}>
-              <Text style={styles.guest}>Кірусіз жалғастыру</Text>
             </Pressable>
 
             <View style={{ height: 16 }} />
@@ -229,5 +266,4 @@ const styles = StyleSheet.create({
 
   bottomText: { color: colors.muted, fontSize: 13 },
   link: { color: colors.navy, fontWeight: "900" },
-  guest: { color: colors.navy, fontWeight: "900", fontSize: 13 },
 });

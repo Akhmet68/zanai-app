@@ -40,7 +40,7 @@ function SocialBtn({
 
 export default function ChooseAuthScreen() {
   const navigation = useNavigation<any>();
-  const { setIsAuthed } = useAuth();
+  const { continueAsGuest } = useAuth(); 
   const insets = useSafeAreaInsets();
 
   const onApple = () => {
@@ -78,21 +78,15 @@ export default function ChooseAuthScreen() {
               <View style={styles.line} />
             </View>
 
-            <Pressable
-              onPress={() => navigation.navigate("Login")}
-              style={({ pressed }) => [styles.primary, pressed && { opacity: 0.92 }]}
-            >
+            <Pressable onPress={() => navigation.navigate("Login")} style={({ pressed }) => [styles.primary, pressed && { opacity: 0.92 }]}>
               <Text style={styles.primaryText}>Войти по почте</Text>
             </Pressable>
 
-            <Pressable
-              onPress={() => navigation.navigate("Register")}
-              style={({ pressed }) => [styles.secondary, pressed && { opacity: 0.92 }]}
-            >
+            <Pressable onPress={() => navigation.navigate("Register")} style={({ pressed }) => [styles.secondary, pressed && { opacity: 0.92 }]}>
               <Text style={styles.secondaryText}>Создать аккаунт</Text>
             </Pressable>
 
-            <Pressable onPress={() => setIsAuthed(true)} style={{ marginTop: 14 }}>
+            <Pressable onPress={continueAsGuest} style={{ marginTop: 14 }}>
               <Text style={styles.guest}>Продолжить без входа</Text>
             </Pressable>
 
@@ -141,26 +135,10 @@ const styles = StyleSheet.create({
   line: { flex: 1, height: 1, backgroundColor: colors.border },
   or: { color: colors.muted, fontWeight: "800", fontSize: 12 },
 
-  primary: {
-    height: 56,
-    borderRadius: 18,
-    backgroundColor: colors.navy,
-    alignItems: "center",
-    justifyContent: "center",
-    marginTop: 2,
-  },
+  primary: { height: 56, borderRadius: 18, backgroundColor: colors.navy, alignItems: "center", justifyContent: "center", marginTop: 2 },
   primaryText: { color: "#fff", fontSize: 16, fontWeight: "900" },
 
-  secondary: {
-    height: 56,
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.white,
-    alignItems: "center",
-    justifyContent: "center",
-    marginTop: 10,
-  },
+  secondary: { height: 56, borderRadius: 18, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.white, alignItems: "center", justifyContent: "center", marginTop: 10 },
   secondaryText: { color: colors.text, fontSize: 16, fontWeight: "900" },
 
   guest: { textAlign: "center", color: colors.navy, fontWeight: "900" },

@@ -1,17 +1,8 @@
 import React, { useState } from "react";
 import {
-  View,
-  Text,
-  TextInput,
-  Pressable,
-  Image,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-  Keyboard,
-  TouchableWithoutFeedback,
-  StyleSheet,
-  Alert,
+  View, Text, TextInput, Pressable, Image,
+  KeyboardAvoidingView, Platform, ScrollView, Keyboard,
+  TouchableWithoutFeedback, StyleSheet, Alert, ActivityIndicator,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useNavigation } from "@react-navigation/native";
@@ -20,14 +11,12 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import Screen from "../../ui/Screen";
 import { colors } from "../../core/colors";
 import { useAuth } from "../../app/auth/AuthContext";
+import { fbLogin, fbResendVerification } from "../../app/firebase/authService";
 
 const LOGO = require("../../../assets/zanai-logo.png");
 
 function SocialButton({
-  icon,
-  text,
-  onPress,
-  variant = "light",
+  icon, text, onPress, variant = "light",
 }: {
   icon: keyof typeof Ionicons.glyphMap;
   text: string;
@@ -53,19 +42,49 @@ function SocialButton({
 export default function LoginScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<any>();
-  const { setIsAuthed } = useAuth();
+  const { continueAsGuest, refreshUser } = useAuth();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPass, setShowPass] = useState(false);
+  const [loading, setLoading] = useState(false);
 
-  const onLogin = () => {
+  const onLogin = async () => {
     const e = email.trim();
     const p = password.trim();
     if (!e || !p) return Alert.alert("Ошибка", "Заполни почту и пароль.");
     if (!e.includes("@")) return Alert.alert("Ошибка", "Почта выглядит некорректно.");
     if (p.length < 6) return Alert.alert("Ошибка", "Пароль минимум 6 символов.");
-    setIsAuthed(true);
+
+    try {
+      setLoading(true);
+      const user = await fbLogin(e, p);
+
+      if (!user.emailVerified) {
+        Alert.alert(
+          "Подтверди почту",
+          "Мы отправили письмо со ссылкой подтверждения. Открой почту и нажми на ссылку, затем вернись сюда.",
+          [
+            { text: "Ок", onPress: () => navigation.navigate("VerifyEmail") },
+            {
+              text: "Отправить снова",
+              onPress: async () => {
+                await fbResendVerification();
+                Alert.alert("Готово", "Письмо отправлено повторно.");
+              },
+            },
+          ]
+        );
+        return;
+      }
+
+      // если подтвержден — RootNavigator сам пустит в Main
+      await refreshUser();
+    } catch (err: any) {
+      Alert.alert("Ошибка входа", err?.message ?? "Не удалось войти.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -97,18 +116,18 @@ export default function LoginScreen() {
             <View style={{ height: 10 }} />
 
             <Text style={styles.title}>Кіру</Text>
-            <Text style={styles.subtitle}>Apple/Google арқылы немесе пошта арқылы кіріңіз</Text>
+            <Text style={styles.subtitle}>Пошта арқылы кіріңіз (Google/Apple кейін қосамыз)</Text>
 
             <SocialButton
               icon="logo-apple"
               text="Apple арқылы кіру"
               variant="dark"
-              onPress={() => Alert.alert("Скоро", "Apple Sign-In қосамыз (Dev Build арқылы).")}
+              onPress={() => Alert.alert("Кейін", "Apple Sign-In Dev Build арқылы қосамыз.")}
             />
             <SocialButton
               icon="logo-google"
               text="Google арқылы кіру"
-              onPress={() => Alert.alert("Скоро", "Google Sign-In қосамыз (Dev Build арқылы).")}
+              onPress={() => Alert.alert("Кейін", "Google Sign-In Dev Build арқылы қосамыз.")}
             />
 
             <View style={styles.orRow}>
@@ -151,14 +170,21 @@ export default function LoginScreen() {
             </View>
 
             <Pressable
-              onPress={() => Alert.alert("Скоро", "Восстановление пароля подключим после бэка.")}
+              onPress={() => Alert.alert("Кейін", "Құпия сөзді қалпына келтіруді кейін қосамыз.")}
               style={styles.forgotBtn}
             >
               <Text style={styles.forgotText}>Құпия сөзді қалпына келтіру</Text>
             </Pressable>
 
-            <Pressable onPress={onLogin} style={({ pressed }) => [styles.primaryBtn, pressed && { opacity: 0.92 }]}>
-              <Text style={styles.primaryBtnText}>Жүйеге кіру</Text>
+            <Pressable
+              onPress={onLogin}
+              disabled={loading}
+              style={({ pressed }) => [
+                styles.primaryBtn,
+                (pressed || loading) && { opacity: 0.92 },
+              ]}
+            >
+              {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryBtnText}>Жүйеге кіру</Text>}
             </Pressable>
 
             <Pressable onPress={() => navigation.navigate("Register")} style={{ marginTop: 14, alignItems: "center" }}>
@@ -167,7 +193,7 @@ export default function LoginScreen() {
               </Text>
             </Pressable>
 
-            <Pressable onPress={() => setIsAuthed(true)} style={{ marginTop: 14, alignItems: "center" }}>
+            <Pressable onPress={continueAsGuest} style={{ marginTop: 14, alignItems: "center" }}>
               <Text style={styles.guest}>Кірусіз жалғастыру</Text>
             </Pressable>
 
@@ -181,29 +207,13 @@ export default function LoginScreen() {
 
 const styles = StyleSheet.create({
   topBar: { height: 44, justifyContent: "center", alignItems: "center" },
-  backBtn: {
-    position: "absolute",
-    left: 0,
-    height: 44,
-    width: 44,
-    justifyContent: "center",
-    alignItems: "flex-start",
-  },
+  backBtn: { position: "absolute", left: 0, height: 44, width: 44, justifyContent: "center", alignItems: "flex-start" },
   logo: { height: 30, width: 175, resizeMode: "contain" },
 
   title: { fontSize: 28, fontWeight: "900", textAlign: "center", color: colors.text, marginBottom: 6, marginTop: 6 },
   subtitle: { textAlign: "center", color: colors.muted, fontSize: 13, marginBottom: 14, lineHeight: 18 },
 
-  socialBtn: {
-    height: 54,
-    borderRadius: 18,
-    borderWidth: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 10,
-    marginBottom: 10,
-  },
+  socialBtn: { height: 54, borderRadius: 18, borderWidth: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10, marginBottom: 10 },
   socialLight: { borderColor: colors.border, backgroundColor: colors.white },
   socialDark: { borderColor: "#0B0B0B", backgroundColor: "#0B0B0B" },
   socialText: { fontSize: 14, fontWeight: "900", color: colors.text },
@@ -212,14 +222,7 @@ const styles = StyleSheet.create({
   orLine: { flex: 1, height: 1, backgroundColor: colors.border },
   orText: { fontSize: 12, color: colors.muted, fontWeight: "800" },
 
-  field: {
-    position: "relative",
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
-    borderRadius: 16,
-    backgroundColor: "#fff",
-    marginBottom: 12,
-  },
+  field: { position: "relative", borderWidth: 1, borderColor: "#E5E7EB", borderRadius: 16, backgroundColor: "#fff", marginBottom: 12 },
   input: { height: 56, paddingHorizontal: 16, fontSize: 16, color: colors.text },
   eyeBtn: { position: "absolute", right: 14, top: 0, height: 56, justifyContent: "center", alignItems: "center" },
 

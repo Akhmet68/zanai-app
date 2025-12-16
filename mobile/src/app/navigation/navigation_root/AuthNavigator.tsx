@@ -6,6 +6,7 @@ import OnboardingScreen from "../../../screens/auth/OnboardingScreen";
 import ChooseAuthScreen from "../../../screens/auth/ChooseAuthScreen";
 import LoginScreen from "../../../screens/auth/LoginScreen";
 import RegisterScreen from "../../../screens/auth/RegisterScreen";
+import VerifyEmailScreen from "../../../screens/auth/VerifyEmailScreen";
 
 export type AuthStackParamList = {
   Splash: undefined;
@@ -13,6 +14,7 @@ export type AuthStackParamList = {
   ChooseAuth: undefined;
   Login: undefined;
   Register: undefined;
+  VerifyEmail: undefined; // ✅
 };
 
 const Stack = createNativeStackNavigator<AuthStackParamList>();
@@ -25,6 +27,7 @@ export default function AuthNavigator() {
       <Stack.Screen name="ChooseAuth" component={ChooseAuthScreen} />
       <Stack.Screen name="Login" component={LoginScreen} />
       <Stack.Screen name="Register" component={RegisterScreen} />
+      <Stack.Screen name="VerifyEmail" component={VerifyEmailScreen} />
     </Stack.Navigator>
   );
 }
