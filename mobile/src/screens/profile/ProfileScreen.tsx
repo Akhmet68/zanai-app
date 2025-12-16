@@ -1,16 +1,21 @@
 import React from "react";
 import { View, Text, StyleSheet } from "react-native";
+import Screen from "../../ui/Screen";
+import { colors } from "../../core/colors";
 
 export default function ProfileScreen() {
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Профиль</Text>
-      <Text>Настройки / язык / выход / подписка.</Text>
-    </View>
+    <Screen>
+      <View style={styles.container}>
+        <Text style={styles.title}>Профиль</Text>
+        <Text style={styles.subtitle}>Настройки / язык / выход / подписка.</Text>
+      </View>
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 16, backgroundColor: "#fff" },
-  title: { fontSize: 22, fontWeight: "800", marginBottom: 8 },
+  container: { flex: 1, paddingHorizontal: 16, paddingTop: 10 },
+  title: { fontSize: 28, fontWeight: "900", color: colors.text },
+  subtitle: { marginTop: 8, fontSize: 16, color: colors.muted },
 });
