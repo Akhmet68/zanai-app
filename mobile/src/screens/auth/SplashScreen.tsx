@@ -8,7 +8,7 @@ type Props = NativeStackScreenProps<AuthStackParamList, "Splash">;
 export default function SplashScreen({ navigation }: Props) {
   useEffect(() => {
     const t = setTimeout(() => {
-      navigation.replace("Onboarding"); // <- вот почему раньше “висело”
+      navigation.replace("Onboarding"); 
     }, 900);
 
     return () => clearTimeout(t);
@@ -16,13 +16,11 @@ export default function SplashScreen({ navigation }: Props) {
 
   return (
     <View style={styles.container}>
-      {/* Лого сверху */}
       <Image
         source={require("../../../assets/zanai-logo.png")}
         style={styles.logo}
       />
 
-      {/* Центр */}
       <View style={styles.center}>
         <Text style={styles.title}>ZanAI</Text>
         <Text style={styles.subtitle}>Загрузка...</Text>
