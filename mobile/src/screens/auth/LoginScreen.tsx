@@ -1,62 +1,70 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useState } from "react";
 import {
   View,
   Text,
   TextInput,
   Pressable,
   Image,
+  KeyboardAvoidingView,
   Platform,
   ScrollView,
   Keyboard,
   TouchableWithoutFeedback,
   StyleSheet,
-  Animated,
+  Alert,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useNavigation } from "@react-navigation/native";
 import Ionicons from "@expo/vector-icons/Ionicons";
+import { colors } from "../../core/colors";
+import { useAuth } from "../../app/auth/AuthContext";
 
 const LOGO = require("../../../assets/zanai-logo.png");
+
+function SocialButton({
+  icon,
+  text,
+  onPress,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  text: string;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [styles.socialBtn, pressed && { opacity: 0.9 }]}
+    >
+      <Ionicons name={icon} size={20} color={colors.text} />
+      <Text style={styles.socialText}>{text}</Text>
+    </Pressable>
+  );
+}
 
 export default function LoginScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<any>();
+  const { setIsAuthed } = useAuth();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPass, setShowPass] = useState(false);
 
-  // Smooth keyboard spacer
-  const keyboardSpace = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    const showEvent = Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
-    const hideEvent = Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
-
-    const showSub = Keyboard.addListener(showEvent as any, (e: any) => {
-      Animated.timing(keyboardSpace, {
-        toValue: e?.endCoordinates?.height ?? 0,
-        duration: e?.duration ?? 250,
-        useNativeDriver: false,
-      }).start();
-    });
-
-    const hideSub = Keyboard.addListener(hideEvent as any, (e: any) => {
-      Animated.timing(keyboardSpace, {
-        toValue: 0,
-        duration: e?.duration ?? 250,
-        useNativeDriver: false,
-      }).start();
-    });
-
-    return () => {
-      showSub.remove();
-      hideSub.remove();
-    };
-  }, [keyboardSpace]);
+  const onLogin = () => {
+    if (!email.trim() || !password.trim()) {
+      Alert.alert("Ошибка", "Заполни почту и пароль.");
+      return;
+    }
+    // ✅ временно (потом подключим бэк)
+    setIsAuthed(true);
+  };
 
   return (
-    <View style={{ flex: 1, backgroundColor: "#fff" }}>
+    <KeyboardAvoidingView
+      style={{ flex: 1, backgroundColor: "#fff" }}
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
+      keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 0}
+    >
       <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
         <ScrollView
           style={{ flex: 1 }}
@@ -67,87 +75,114 @@ export default function LoginScreen() {
             paddingHorizontal: 20,
           }}
           keyboardShouldPersistTaps="handled"
-          keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
+          showsVerticalScrollIndicator={false}
         >
           {/* Top bar: back + logo */}
           <View style={styles.topBar}>
-            <Pressable onPress={() => navigation.goBack()} hitSlop={12} style={styles.backBtn}>
-              <Ionicons name="chevron-back" size={28} color="#0B0F1A" />
+            <Pressable
+              onPress={() => navigation.goBack()}
+              hitSlop={12}
+              style={styles.backBtn}
+            >
+              <Ionicons name="chevron-back" size={28} color={colors.text} />
             </Pressable>
 
             <Image source={LOGO} style={styles.logo} />
           </View>
 
-          {/* Spacer */}
-          <View style={{ flex: 1 }} />
+          <View style={{ height: 10 }} />
+
+          {/* Title */}
+          <Text style={styles.title}>Kiru</Text>
+          <Text style={styles.subtitle}>
+            Apple/Google арқылы немесе пошта арқылы кіріңіз
+          </Text>
+
+          {/* Social */}
+          <SocialButton
+            icon="logo-apple"
+            text="Apple арқылы кіру"
+            onPress={() => Alert.alert("Скоро", "Apple Sign-In қосамыз (келесі қадам).")}
+          />
+          <SocialButton
+            icon="logo-google"
+            text="Google арқылы кіру"
+            onPress={() => Alert.alert("Скоро", "Google Sign-In қосамыз (келесі қадам).")}
+          />
+
+          <View style={styles.orRow}>
+            <View style={styles.orLine} />
+            <Text style={styles.orText}>немесе</Text>
+            <View style={styles.orLine} />
+          </View>
 
           {/* Form */}
-          <View>
-            <Text style={styles.title}>Kiru</Text>
+          <View style={styles.field}>
+            <TextInput
+              value={email}
+              onChangeText={setEmail}
+              placeholder="Esim/poshta"
+              placeholderTextColor="#9AA3AF"
+              autoCapitalize="none"
+              autoCorrect={false}
+              keyboardType="email-address"
+              style={styles.input}
+            />
+          </View>
 
-            <View style={styles.field}>
-              <TextInput
-                value={email}
-                onChangeText={setEmail}
-                placeholder="Esim/poshta"
-                placeholderTextColor="#9AA3AF"
-                autoCapitalize="none"
-                autoCorrect={false}
-                keyboardType="email-address"
-                style={styles.input}
-                returnKeyType="next"
-              />
-            </View>
-
-            <View style={styles.field}>
-              <TextInput
-                value={password}
-                onChangeText={setPassword}
-                placeholder="Qupiya soz"
-                placeholderTextColor="#9AA3AF"
-                autoCapitalize="none"
-                autoCorrect={false}
-                secureTextEntry={!showPass}
-                style={[styles.input, { paddingRight: 48 }]}
-                returnKeyType="done"
-              />
-
-              <Pressable
-                onPress={() => setShowPass((v) => !v)}
-                hitSlop={12}
-                style={styles.eyeBtn}
-              >
-                <Ionicons
-                  name={showPass ? "eye-off-outline" : "eye-outline"}
-                  size={22}
-                  color="#6B7280"
-                />
-              </Pressable>
-            </View>
-
-            <Pressable onPress={() => {}} style={styles.forgotBtn}>
-              <Text style={styles.forgotText}>Qupiya sozdi qaja ondeu</Text>
-            </Pressable>
-
-            <Pressable onPress={() => {}} style={styles.primaryBtn}>
-              <Text style={styles.primaryBtnText}>Juiege kiru</Text>
-            </Pressable>
+          <View style={styles.field}>
+            <TextInput
+              value={password}
+              onChangeText={setPassword}
+              placeholder="Qupiya soz"
+              placeholderTextColor="#9AA3AF"
+              autoCapitalize="none"
+              autoCorrect={false}
+              secureTextEntry={!showPass}
+              style={[styles.input, { paddingRight: 48 }]}
+            />
 
             <Pressable
-              onPress={() => navigation.navigate("Register")}
-              style={{ marginTop: 14, alignItems: "center" }}
+              onPress={() => setShowPass((v) => !v)}
+              hitSlop={12}
+              style={styles.eyeBtn}
             >
-              <Text style={styles.bottomText}>
-                Juiede joqsýn ba? <Text style={styles.link}>"tirkelu"</Text>
-              </Text>
+              <Ionicons
+                name={showPass ? "eye-off-outline" : "eye-outline"}
+                size={22}
+                color={colors.muted}
+              />
             </Pressable>
           </View>
 
-          {/* Smooth keyboard space */}
-          <Animated.View style={{ height: keyboardSpace }} />
+          <Pressable onPress={() => {}} style={styles.forgotBtn}>
+            <Text style={styles.forgotText}>Qupiya sozdi qaja ondeu</Text>
+          </Pressable>
+
+          <Pressable onPress={onLogin} style={styles.primaryBtn}>
+            <Text style={styles.primaryBtnText}>Juiege kiru</Text>
+          </Pressable>
+
+          <Pressable
+            onPress={() => navigation.navigate("Register")}
+            style={{ marginTop: 14, alignItems: "center" }}
+          >
+            <Text style={styles.bottomText}>
+              Juiede joqsýn ba? <Text style={styles.link}>tirkelu</Text>
+            </Text>
+          </Pressable>
+
+          <Pressable
+            onPress={() => setIsAuthed(true)}
+            style={{ marginTop: 14, alignItems: "center" }}
+          >
+            <Text style={styles.guest}>Кірусіз жалғастыру</Text>
+          </Pressable>
+
+          <View style={{ height: 18 }} />
         </ScrollView>
       </TouchableWithoutFeedback>
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -166,17 +201,49 @@ const styles = StyleSheet.create({
     alignItems: "flex-start",
   },
   logo: {
-    height: 22,
-    width: 100,
+    height: 28,
+    width: 150,
     resizeMode: "contain",
   },
+
   title: {
     fontSize: 28,
-    fontWeight: "700",
+    fontWeight: "800",
     textAlign: "center",
-    color: "#0B0F1A",
+    color: colors.text,
+    marginBottom: 6,
+    marginTop: 6,
+  },
+  subtitle: {
+    textAlign: "center",
+    color: colors.muted,
+    fontSize: 13,
     marginBottom: 14,
   },
+
+  socialBtn: {
+    height: 54,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.white,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+    marginBottom: 10,
+  },
+  socialText: { fontSize: 14, fontWeight: "900", color: colors.text },
+
+  orRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginVertical: 10,
+  },
+  orLine: { flex: 1, height: 1, backgroundColor: colors.border },
+  orText: { fontSize: 12, color: colors.muted, fontWeight: "800" },
+
   field: {
     position: "relative",
     borderWidth: 1,
@@ -189,7 +256,7 @@ const styles = StyleSheet.create({
     height: 56,
     paddingHorizontal: 16,
     fontSize: 16,
-    color: "#0B0F1A",
+    color: colors.text,
   },
   eyeBtn: {
     position: "absolute",
@@ -199,33 +266,25 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
+
   forgotBtn: {
     alignItems: "center",
     marginTop: 6,
     marginBottom: 16,
   },
-  forgotText: {
-    fontSize: 13,
-    color: "#6B7280",
-  },
+  forgotText: { fontSize: 13, color: colors.muted },
+
   primaryBtn: {
     height: 58,
     borderRadius: 18,
-    backgroundColor: "#0B1E4B",
+    backgroundColor: colors.navy,
     justifyContent: "center",
     alignItems: "center",
   },
-  primaryBtnText: {
-    color: "#fff",
-    fontSize: 18,
-    fontWeight: "700",
-  },
-  bottomText: {
-    color: "#6B7280",
-    fontSize: 13,
-  },
-  link: {
-    color: "#0B1E4B",
-    fontWeight: "700",
-  },
+  primaryBtnText: { color: "#fff", fontSize: 18, fontWeight: "800" },
+
+  bottomText: { color: colors.muted, fontSize: 13 },
+  link: { color: colors.navy, fontWeight: "900" },
+
+  guest: { color: colors.navy, fontWeight: "900", fontSize: 13 },
 });
