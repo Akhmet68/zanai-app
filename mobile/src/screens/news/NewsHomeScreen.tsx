@@ -1,22 +1,14 @@
 import React, { useMemo, useState } from "react";
-import {
-  View,
-  Text,
-  StyleSheet,
-  Image,
-  Pressable,
-  ScrollView,
-} from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { View, Text, StyleSheet, Image, Pressable, ScrollView } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { colors } from "../../core/colors";
+import Screen from "../../ui/Screen";
 
 const LOGO = require("../../../assets/zanai-logo.png");
 
 type Chip = { key: string; label: string };
 
 export default function NewsHomeScreen() {
-  const insets = useSafeAreaInsets();
   const [chip, setChip] = useState("all");
 
   const chips: Chip[] = useMemo(
@@ -35,14 +27,12 @@ export default function NewsHomeScreen() {
       {
         id: "1",
         title: "Токаев подписал закон об искусственном интеллекте",
-        subtitle:
-          "Касым-Жомарт Токаев подписал закон “Об искусственном интеллекте”…",
+        subtitle: "Касым-Жомарт Токаев подписал закон “Об искусственном интеллекте”…",
       },
       {
         id: "2",
         title: "Сенат вернул в Мажилис на доработку законопроект",
-        subtitle:
-          "Сенат одобрил проект, но направил на доработку отдельные пункты…",
+        subtitle: "Сенат одобрил проект, но направил на доработку отдельные пункты…",
       },
     ],
     []
@@ -59,12 +49,9 @@ export default function NewsHomeScreen() {
   );
 
   return (
-    <View style={[styles.screen, { paddingTop: insets.top + 10 }]}>
+    <Screen style={styles.screen}>
       <ScrollView
-        contentContainerStyle={{
-          paddingBottom: 110,
-          paddingHorizontal: 16,
-        }}
+        contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
         {/* Header */}
@@ -115,7 +102,7 @@ export default function NewsHomeScreen() {
 
         {/* Статьи */}
         <View style={styles.sectionRow}>
-          <Text style={styles.sectionTitle}>Статьи</Text>
+          <Text style={[styles.sectionTitle, { marginTop: 0 }]}>Статьи</Text>
         </View>
 
         <ScrollView
@@ -155,11 +142,7 @@ export default function NewsHomeScreen() {
           {articles.map((a) => (
             <Pressable key={a.id} style={styles.articleCard} onPress={() => {}}>
               <View style={styles.articleImg}>
-                <Ionicons
-                  name="newspaper-outline"
-                  size={18}
-                  color={colors.muted}
-                />
+                <Ionicons name="newspaper-outline" size={18} color={colors.muted} />
               </View>
               <Text style={styles.articleTitle} numberOfLines={3}>
                 {a.title}
@@ -173,18 +156,24 @@ export default function NewsHomeScreen() {
           <Text style={styles.primaryBtnText}>Еще 15 статей</Text>
         </Pressable>
       </ScrollView>
-    </View>
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.white },
+  screen: { backgroundColor: colors.white },
+
+  scrollContent: {
+    paddingHorizontal: 16,
+    paddingBottom: 110, // место под tabbar
+  },
 
   header: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     paddingBottom: 12,
+    paddingTop: 6, // <-- небольшой отступ (Screen уже дал paddingTop)
   },
   logo: { height: 22, width: 110, resizeMode: "contain" },
   headerRight: { flexDirection: "row", alignItems: "center", gap: 10 },
@@ -212,12 +201,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.white,
   },
 
-  sectionRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginTop: 18,
-  },
+  sectionRow: { marginTop: 18 },
   sectionTitle: {
     fontSize: 18,
     fontWeight: "800",
@@ -233,16 +217,8 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     backgroundColor: colors.white,
   },
-  newsRow: {
-    flexDirection: "row",
-    gap: 12,
-    padding: 14,
-    alignItems: "center",
-  },
-  newsRowDivider: {
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-  },
+  newsRow: { flexDirection: "row", gap: 12, padding: 14, alignItems: "center" },
+  newsRowDivider: { borderTopWidth: 1, borderTopColor: colors.border },
   thumb: {
     width: 62,
     height: 46,

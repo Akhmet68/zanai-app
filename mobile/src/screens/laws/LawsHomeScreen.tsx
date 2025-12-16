@@ -1,16 +1,22 @@
 import React from "react";
-import { View, Text, StyleSheet } from "react-native";
+import { Text, StyleSheet } from "react-native";
+import Screen from "../../ui/Screen";
+import { colors } from "../../core/colors";
 
 export default function LawsHomeScreen() {
   return (
-    <View style={styles.container}>
+    <Screen contentStyle={styles.container}>
       <Text style={styles.title}>Законы</Text>
-      <Text>Поиск по статьям / FAQ / категории.</Text>
-    </View>
+      <Text style={styles.text}>Поиск по статьям / FAQ / категории.</Text>
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 16, backgroundColor: "#fff" },
-  title: { fontSize: 22, fontWeight: "800", marginBottom: 8 },
+  container: {
+    paddingHorizontal: 16,
+    paddingTop: 12, // можно подогнать под макет
+  },
+  title: { fontSize: 22, fontWeight: "800", marginBottom: 8, color: colors.text },
+  text: { color: colors.muted },
 });
