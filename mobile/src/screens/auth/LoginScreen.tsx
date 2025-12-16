@@ -1,16 +1,16 @@
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   View,
   Text,
   TextInput,
   Pressable,
   Image,
-  KeyboardAvoidingView,
   Platform,
   ScrollView,
   Keyboard,
   TouchableWithoutFeedback,
   StyleSheet,
+  Animated,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useNavigation } from "@react-navigation/native";
@@ -26,12 +26,37 @@ export default function LoginScreen() {
   const [password, setPassword] = useState("");
   const [showPass, setShowPass] = useState(false);
 
+  // Smooth keyboard spacer
+  const keyboardSpace = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const showEvent = Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
+    const hideEvent = Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
+
+    const showSub = Keyboard.addListener(showEvent as any, (e: any) => {
+      Animated.timing(keyboardSpace, {
+        toValue: e?.endCoordinates?.height ?? 0,
+        duration: e?.duration ?? 250,
+        useNativeDriver: false,
+      }).start();
+    });
+
+    const hideSub = Keyboard.addListener(hideEvent as any, (e: any) => {
+      Animated.timing(keyboardSpace, {
+        toValue: 0,
+        duration: e?.duration ?? 250,
+        useNativeDriver: false,
+      }).start();
+    });
+
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, [keyboardSpace]);
+
   return (
-    <KeyboardAvoidingView
-      style={{ flex: 1, backgroundColor: "#fff" }}
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
-      keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 0}
-    >
+    <View style={{ flex: 1, backgroundColor: "#fff" }}>
       <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
         <ScrollView
           style={{ flex: 1 }}
@@ -42,14 +67,11 @@ export default function LoginScreen() {
             paddingHorizontal: 20,
           }}
           keyboardShouldPersistTaps="handled"
+          keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
         >
           {/* Top bar: back + logo */}
           <View style={styles.topBar}>
-            <Pressable
-              onPress={() => navigation.goBack()}
-              hitSlop={12}
-              style={styles.backBtn}
-            >
+            <Pressable onPress={() => navigation.goBack()} hitSlop={12} style={styles.backBtn}>
               <Ionicons name="chevron-back" size={28} color="#0B0F1A" />
             </Pressable>
 
@@ -73,6 +95,7 @@ export default function LoginScreen() {
                 autoCorrect={false}
                 keyboardType="email-address"
                 style={styles.input}
+                returnKeyType="next"
               />
             </View>
 
@@ -86,6 +109,7 @@ export default function LoginScreen() {
                 autoCorrect={false}
                 secureTextEntry={!showPass}
                 style={[styles.input, { paddingRight: 48 }]}
+                returnKeyType="done"
               />
 
               <Pressable
@@ -118,9 +142,12 @@ export default function LoginScreen() {
               </Text>
             </Pressable>
           </View>
+
+          {/* Smooth keyboard space */}
+          <Animated.View style={{ height: keyboardSpace }} />
         </ScrollView>
       </TouchableWithoutFeedback>
-    </KeyboardAvoidingView>
+    </View>
   );
 }
 
