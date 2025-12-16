@@ -9,11 +9,10 @@ export type RootStackParamList = {
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
-const [isAuthed] = useState(true);
 
 export default function RootNavigator() {
-  // MVP: позже заменим на реальную авторизацию (JWT/refresh token)
-  const [isAuthed] = useState(false);
+  // временно: true = сразу в Main, false = сначала Auth
+  const [isAuthed] = useState(true);
 
   const initialRouteName = useMemo<keyof RootStackParamList>(
     () => (isAuthed ? "Main" : "Auth"),
