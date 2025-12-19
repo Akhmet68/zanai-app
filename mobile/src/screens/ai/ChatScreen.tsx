@@ -13,55 +13,79 @@ import {
   Keyboard,
   Modal,
   Alert,
+  Linking,
 } from "react-native";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import * as ImagePicker from "expo-image-picker";
 import * as DocumentPicker from "expo-document-picker";
+import { Audio } from "expo-av";
 
 import Screen from "../../ui/Screen";
 import { colors } from "../../core/colors";
 import { useAuth } from "../../app/auth/AuthContext";
-import {
-  fbListenMessages,
-  fbSendMessage,
-  fbClearChat,
-  ChatMessage,
-} from "../../app/firebase/chatService";
-
-type Msg = { id: string; role: "user" | "assistant"; text: string };
+import { fbClearChat, fbListenMessages, fbSendMessage, ChatMessage } from "../../app/firebase/chatService";
+import { uploadUriToStorage } from "../../app/firebase/storageService";
 
 const LOGO = require("../../../assets/zanai-logo.png");
+
+function bytesToHuman(n?: number) {
+  if (!n || n <= 0) return "";
+  const kb = n / 1024;
+  if (kb < 1024) return `${kb.toFixed(0)} KB`;
+  return `${(kb / 1024).toFixed(1)} MB`;
+}
+
+function msToTime(ms?: number) {
+  if (!ms || ms <= 0) return "0:00";
+  const s = Math.floor(ms / 1000);
+  const m = Math.floor(s / 60);
+  const ss = String(s % 60).padStart(2, "0");
+  return `${m}:${ss}`;
+}
 
 function PlusSheet({
   open,
   onClose,
   onPickImage,
+  onCamera,
   onPickDoc,
   onClearChat,
 }: {
   open: boolean;
   onClose: () => void;
   onPickImage: () => void;
+  onCamera: () => void;
   onPickDoc: () => void;
   onClearChat: () => void;
 }) {
   return (
     <Modal visible={open} transparent animationType="fade" onRequestClose={onClose}>
       <Pressable style={styles.sheetBackdrop} onPress={onClose} />
-
       <View style={styles.sheetWrap}>
         <View style={styles.sheetCard}>
           <View style={styles.sheetHandle} />
-
           <Text style={styles.sheetTitle}>Действия</Text>
 
           <Pressable style={styles.sheetRow} onPress={onPickImage}>
             <View style={styles.sheetIcon}>
-              <Ionicons name="image-outline" size={20} color={colors.text} />
+              <Ionicons name="images-outline" size={20} color={colors.text} />
             </View>
             <View style={{ flex: 1 }}>
               <Text style={styles.sheetRowTitle}>Фото из галереи</Text>
-              <Text style={styles.sheetRowSub}>Прикрепить изображение</Text>
+              <Text style={styles.sheetRowSub}>Загрузим в Storage и покажем в чате</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={colors.muted} />
+          </Pressable>
+
+          <View style={styles.sheetDivider} />
+
+          <Pressable style={styles.sheetRow} onPress={onCamera}>
+            <View style={styles.sheetIcon}>
+              <Ionicons name="camera-outline" size={20} color={colors.text} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.sheetRowTitle}>Сделать фото</Text>
+              <Text style={styles.sheetRowSub}>Откроем камеру</Text>
             </View>
             <Ionicons name="chevron-forward" size={18} color={colors.muted} />
           </Pressable>
@@ -87,7 +111,7 @@ function PlusSheet({
             </View>
             <View style={{ flex: 1 }}>
               <Text style={[styles.sheetRowTitle, { color: "#B42318" }]}>Очистить чат</Text>
-              <Text style={styles.sheetRowSub}>Удалит историю сообщений</Text>
+              <Text style={styles.sheetRowSub}>Удалит историю</Text>
             </View>
           </Pressable>
 
@@ -100,31 +124,106 @@ function PlusSheet({
   );
 }
 
+function Bubble({ m, onPlayAudio }: { m: ChatMessage; onPlayAudio: (m: ChatMessage) => void }) {
+  const isUser = m.role === "user";
+  const bubbleStyle = [styles.bubble, isUser ? styles.user : styles.assistant];
+  const textStyle = [styles.bubbleText, isUser ? styles.userText : styles.assistantText];
+
+  if (m.type === "image" && m.url) {
+    return (
+      <View style={bubbleStyle}>
+        <Image source={{ uri: m.url }} style={styles.imageMsg} />
+        {!!m.text && <Text style={[textStyle, { marginTop: 8 }]}>{m.text}</Text>}
+      </View>
+    );
+  }
+
+  if (m.type === "file" && m.url) {
+    return (
+      <Pressable
+        onPress={() => Linking.openURL(m.url!).catch(() => Alert.alert("Ошибка", "Не удалось открыть файл."))}
+        style={bubbleStyle}
+      >
+        <View style={styles.fileRow}>
+          <Ionicons name="document-attach-outline" size={20} color={isUser ? "#fff" : colors.text} />
+          <View style={{ flex: 1 }}>
+            <Text style={textStyle} numberOfLines={2}>
+              {m.name ?? "Файл"}
+            </Text>
+            <Text style={[textStyle, { opacity: 0.75, fontSize: 12, marginTop: 2 }]}>
+              {bytesToHuman(m.size) || m.mime || "Документ"}
+            </Text>
+          </View>
+          <Ionicons name="open-outline" size={18} color={isUser ? "#fff" : colors.muted} />
+        </View>
+      </Pressable>
+    );
+  }
+
+  if (m.type === "audio" && m.url) {
+    return (
+      <Pressable onPress={() => onPlayAudio(m)} style={bubbleStyle}>
+        <View style={styles.audioRow}>
+          <Ionicons name="play-circle-outline" size={26} color={isUser ? "#fff" : colors.text} />
+          <View style={{ flex: 1 }}>
+            <Text style={textStyle}>Голосовое сообщение</Text>
+            <Text style={[textStyle, { opacity: 0.75, fontSize: 12, marginTop: 2 }]}>
+              {msToTime(m.durationMs)}
+            </Text>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color={isUser ? "#fff" : colors.muted} />
+        </View>
+      </Pressable>
+    );
+  }
+
+  return (
+    <View style={bubbleStyle}>
+      <Text style={textStyle}>{m.text ?? ""}</Text>
+    </View>
+  );
+}
+
 export default function ChatScreen() {
   const { user, guest } = useAuth();
 
   const [input, setInput] = useState("");
-  const [messages, setMessages] = useState<Msg[]>([]);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(false);
 
   const [plusOpen, setPlusOpen] = useState(false);
+  const [sendingAttachment, setSendingAttachment] = useState(false);
 
-  const listRef = useRef<FlatList<Msg>>(null);
+  // Voice
+  const [recording, setRecording] = useState<Audio.Recording | null>(null);
+  const [recordingMs, setRecordingMs] = useState(0);
+  const recordTimerRef = useRef<any>(null);
+
+  // audio play (very MVP)
+  const soundRef = useRef<Audio.Sound | null>(null);
+
+  const listRef = useRef<FlatList<ChatMessage>>(null);
   const data = useMemo(() => messages, [messages]);
 
-  // Firestore realtime (только если залогинен)
   useEffect(() => {
     if (!user?.uid) return;
 
     setLoading(true);
-    const unsub = fbListenMessages(user.uid, (items: ChatMessage[]) => {
-      const mapped: Msg[] = items.map((m) => ({ id: m.id, role: m.role, text: m.text }));
-      setMessages(mapped);
+    const unsub = fbListenMessages(user.uid, (items) => {
+      setMessages(items);
       setLoading(false);
     });
 
     return () => unsub();
   }, [user?.uid]);
+
+  useEffect(() => {
+    return () => {
+      try {
+        soundRef.current?.unloadAsync();
+      } catch {}
+    };
+  }, []);
 
   const scrollToEnd = () => {
     requestAnimationFrame(() => listRef.current?.scrollToEnd({ animated: true }));
@@ -135,102 +234,166 @@ export default function ChatScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messages.length]);
 
-  const sendLocal = (role: "user" | "assistant", text: string) => {
-    setMessages((p) => [...p, { id: String(Date.now()) + Math.random(), role, text }]);
+  const sendLocal = (doc: Omit<ChatMessage, "id">) => {
+    setMessages((p) => [...p, { id: String(Date.now()) + Math.random(), ...doc }]);
   };
 
-  const send = async (text?: string) => {
+  const sendText = async (text?: string) => {
     const trimmed = (text ?? input).trim();
     if (!trimmed) return;
 
     Keyboard.dismiss();
     setInput("");
 
-    // Гость: локально
+    // guest => local
     if (!user?.uid) {
-      sendLocal("user", trimmed);
-
+      sendLocal({ role: "user", type: "text", text: trimmed });
       setTimeout(() => {
-        sendLocal("assistant", `Понял. (Демо) Ты написал: “${trimmed}”.\nСкоро подключим AI 🙂`);
-      }, 350);
-
+        sendLocal({ role: "assistant", type: "text", text: `Понял 🙂 (демо)\nТы написал: “${trimmed}”.` });
+      }, 300);
       return;
     }
 
-    // Залогинен: Firestore
-    try {
-      await fbSendMessage(user.uid, "user", trimmed);
+    await fbSendMessage(user.uid, { role: "user", type: "text", text: trimmed });
 
-      // демо-ответ
-      setTimeout(async () => {
-        try {
-          await fbSendMessage(
-            user.uid,
-            "assistant",
-            `Понял. (Демо) Ты написал: “${trimmed}”.\nСкоро подключим AI 🙂`
-          );
-        } catch {}
-      }, 350);
-    } catch {
-      sendLocal("assistant", "Ошибка отправки. Проверь интернет и попробуй ещё раз.");
-    }
+    // демо-ответ (пока без AI)
+    setTimeout(async () => {
+      try {
+        await fbSendMessage(user.uid, {
+          role: "assistant",
+          type: "text",
+          text: `Понял 🙂 (демо)\nТы написал: “${trimmed}”.`,
+        });
+      } catch {}
+    }, 300);
   };
 
-  const memoryLabel = user?.uid ? "Память включена (профиль)" : guest ? "Гостевой режим" : "Без входа";
-
-  // --- PLUS actions ---
-  const pickImage = async () => {
+  // ---------- Attachments ----------
+  const pickFromGallery = async () => {
     setPlusOpen(false);
 
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (perm.status !== "granted") {
-      Alert.alert("Доступ", "Нужен доступ к галерее.");
-      return;
-    }
+    if (perm.status !== "granted") return Alert.alert("Доступ", "Нужен доступ к галерее.");
 
     const res = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: true,
-      quality: 0.9,
+      quality: 0.92,
     });
 
     if (res.canceled || !res.assets?.[0]?.uri) return;
 
-    const uri = res.assets[0].uri;
-    const text = `📎 Фото: ${uri}`;
-
-    // MVP: пока отправляем как текст. Следующий шаг — upload в Firebase Storage.
-    await send(text);
+    const asset = res.assets[0];
+    await sendImage(asset.uri, asset.fileName ?? `photo_${Date.now()}.jpg`, asset.mimeType ?? "image/jpeg");
   };
 
-  const pickDoc = async () => {
+  const takePhoto = async () => {
+    setPlusOpen(false);
+
+    const perm = await ImagePicker.requestCameraPermissionsAsync();
+    if (perm.status !== "granted") return Alert.alert("Доступ", "Нужен доступ к камере.");
+
+    const res = await ImagePicker.launchCameraAsync({
+      allowsEditing: true,
+      quality: 0.92,
+    });
+
+    if (res.canceled || !res.assets?.[0]?.uri) return;
+
+    const asset = res.assets[0];
+    await sendImage(asset.uri, asset.fileName ?? `camera_${Date.now()}.jpg`, asset.mimeType ?? "image/jpeg");
+  };
+
+  const sendImage = async (uri: string, name: string, mime: string) => {
+    if (!user?.uid) {
+      // guest => local (без upload)
+      sendLocal({ role: "user", type: "image", url: uri, name, mime });
+      return;
+    }
+
+    try {
+      setSendingAttachment(true);
+
+      const up = await uploadUriToStorage({
+        uid: user.uid,
+        uri,
+        folder: "chat-images",
+        fileName: name,
+        contentType: mime,
+      });
+
+      await fbSendMessage(user.uid, {
+        role: "user",
+        type: "image",
+        url: up.url,
+        name: up.name,
+        mime,
+        size: up.size,
+      });
+    } catch (e: any) {
+      Alert.alert("Ошибка", e?.message ?? "Не удалось отправить фото.");
+    } finally {
+      setSendingAttachment(false);
+    }
+  };
+
+  const pickDocument = async () => {
     setPlusOpen(false);
 
     const res = await DocumentPicker.getDocumentAsync({
       multiple: false,
-      copyToCacheDirectory: true,
+      copyToCacheDirectory: true, // ВАЖНО: чтобы не было content:// проблем на Android
     });
 
     if (res.canceled) return;
 
-    const text = `📎 Файл: ${res.assets?.[0]?.name ?? "document"} (${res.assets?.[0]?.size ?? "?"} bytes)`;
-    await send(text);
+    const a = res.assets?.[0];
+    if (!a?.uri) return;
+
+    const name = a.name ?? `file_${Date.now()}`;
+    const mime = a.mimeType ?? "application/octet-stream";
+
+    if (!user?.uid) {
+      sendLocal({ role: "user", type: "file", url: a.uri, name, mime, size: a.size });
+      return;
+    }
+
+    try {
+      setSendingAttachment(true);
+      const up = await uploadUriToStorage({
+        uid: user.uid,
+        uri: a.uri,
+        folder: "chat-files",
+        fileName: name,
+        contentType: mime,
+      });
+
+      await fbSendMessage(user.uid, {
+        role: "user",
+        type: "file",
+        url: up.url,
+        name: up.name,
+        mime,
+        size: a.size ?? up.size,
+      });
+    } catch (e: any) {
+      Alert.alert("Ошибка", e?.message ?? "Не удалось отправить документ.");
+    } finally {
+      setSendingAttachment(false);
+    }
   };
 
-  const clearChat = async () => {
+  const clearChat = () => {
     setPlusOpen(false);
 
-    Alert.alert("Очистить чат?", "История сообщений будет удалена.", [
+    Alert.alert("Очистить чат?", "История будет удалена.", [
       { text: "Отмена", style: "cancel" },
       {
         text: "Очистить",
         style: "destructive",
         onPress: async () => {
           try {
-            if (!user?.uid) {
-              setMessages([]);
-              return;
-            }
+            if (!user?.uid) return setMessages([]);
             await fbClearChat(user.uid);
           } catch {
             Alert.alert("Ошибка", "Не удалось очистить чат.");
@@ -240,13 +403,118 @@ export default function ChatScreen() {
     ]);
   };
 
+  // ---------- Voice ----------
+  const startRecording = async () => {
+    try {
+      const perm = await Audio.requestPermissionsAsync();
+      if (!perm.granted) return Alert.alert("Доступ", "Нужен доступ к микрофону.");
+
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: true,
+        playsInSilentModeIOS: true,
+      });
+
+      const rec = new Audio.Recording();
+      await rec.prepareToRecordAsync(Audio.RecordingOptionsPresets.HIGH_QUALITY);
+      await rec.startAsync();
+
+      setRecording(rec);
+      setRecordingMs(0);
+
+      if (recordTimerRef.current) clearInterval(recordTimerRef.current);
+      recordTimerRef.current = setInterval(async () => {
+        try {
+          const status = await rec.getStatusAsync();
+          if (status.isRecording) setRecordingMs(status.durationMillis ?? 0);
+        } catch {}
+      }, 250);
+    } catch {
+      Alert.alert("Ошибка", "Не удалось начать запись.");
+    }
+  };
+
+  const stopRecordingAndSend = async () => {
+    if (!recording) return;
+
+    try {
+      if (recordTimerRef.current) clearInterval(recordTimerRef.current);
+
+      await recording.stopAndUnloadAsync();
+      const uri = recording.getURI();
+      const status = await recording.getStatusAsync();
+      const durationMs = status.durationMillis ?? recordingMs;
+
+      setRecording(null);
+      setRecordingMs(0);
+
+      if (!uri) return Alert.alert("Ошибка", "Не удалось получить файл записи.");
+
+      // guest => local
+      if (!user?.uid) {
+        sendLocal({ role: "user", type: "audio", url: uri, name: "voice.m4a", mime: "audio/m4a", durationMs });
+        return;
+      }
+
+      setSendingAttachment(true);
+
+      const up = await uploadUriToStorage({
+        uid: user.uid,
+        uri,
+        folder: "chat-audio",
+        fileName: `voice_${Date.now()}.m4a`,
+        contentType: "audio/m4a",
+      });
+
+      await fbSendMessage(user.uid, {
+        role: "user",
+        type: "audio",
+        url: up.url,
+        name: up.name,
+        mime: "audio/m4a",
+        durationMs,
+        size: up.size,
+      });
+    } catch {
+      Alert.alert("Ошибка", "Не удалось отправить голосовое.");
+    } finally {
+      setSendingAttachment(false);
+      try {
+        await Audio.setAudioModeAsync({ allowsRecordingIOS: false });
+      } catch {}
+    }
+  };
+
+  const onPlayAudio = async (m: ChatMessage) => {
+    if (!m.url) return;
+
+    try {
+      // остановим прошлый звук
+      if (soundRef.current) {
+        await soundRef.current.unloadAsync();
+        soundRef.current = null;
+      }
+
+      const { sound } = await Audio.Sound.createAsync(
+        { uri: m.url },
+        { shouldPlay: true }
+      );
+
+      soundRef.current = sound;
+    } catch {
+      Alert.alert("Ошибка", "Не удалось воспроизвести аудио.");
+    }
+  };
+
+  const memoryLabel = user?.uid ? "Память включена (профиль)" : guest ? "Гостевой режим" : "Без входа";
+
   return (
     <Screen contentStyle={{ paddingTop: 0 }}>
       <PlusSheet
         open={plusOpen}
         onClose={() => setPlusOpen(false)}
-        onPickImage={pickImage}
-        onPickDoc={pickDoc}
+        onPickImage={pickFromGallery}
+        onCamera={takePhoto}
+        onPickDoc={pickDocument}
         onClearChat={clearChat}
       />
 
@@ -254,7 +522,9 @@ export default function ChatScreen() {
       <View style={styles.header}>
         <View style={{ width: 36, height: 36 }} />
         <Image source={LOGO} style={styles.logo} />
-        <View style={{ width: 36, height: 36 }} />
+        <Pressable style={styles.headerIcon} onPress={() => setPlusOpen(true)}>
+          <Ionicons name="add" size={24} color={colors.text} />
+        </Pressable>
       </View>
 
       <View style={styles.divider} />
@@ -262,11 +532,10 @@ export default function ChatScreen() {
       <View style={styles.memoryRow}>
         <Ionicons name="sparkles-outline" size={14} color={colors.muted} />
         <Text style={styles.memoryText}>{memoryLabel}</Text>
-        <Ionicons name="information-circle-outline" size={16} color={colors.muted} />
+        {sendingAttachment ? <ActivityIndicator size="small" color={colors.navy} /> : null}
       </View>
 
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
-        {/* List */}
         {loading ? (
           <View style={styles.center}>
             <ActivityIndicator color={colors.navy} />
@@ -280,38 +549,32 @@ export default function ChatScreen() {
             keyExtractor={(m) => m.id}
             showsVerticalScrollIndicator={false}
             contentContainerStyle={styles.listContent}
-            renderItem={({ item }) => (
-              <View style={[styles.bubble, item.role === "user" ? styles.user : styles.assistant]}>
-                <Text style={[styles.bubbleText, item.role === "user" ? styles.userText : styles.assistantText]}>
-                  {item.text}
-                </Text>
-              </View>
-            )}
+            renderItem={({ item }) => <Bubble m={item} onPlayAudio={onPlayAudio} />}
+            onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: true })}
             ListEmptyComponent={
               <View style={styles.emptyWrap}>
-                <Text style={styles.emptyText}>
-                  Напиши вопрос по законам РК — я сохраню историю диалога.
-                </Text>
+                <Text style={styles.emptyText}>Напиши вопрос — чат сохранит историю и вложения.</Text>
               </View>
             }
-            onContentSizeChange={scrollToEnd}
           />
         )}
 
         {/* Bottom */}
         <View style={styles.footer}>
+          {/* Quick prompts */}
           <View style={styles.quickRow}>
-            <Pressable style={styles.quickCard} onPress={() => send("Помоги мне с законом — заполнить документ")}>
+            <Pressable style={styles.quickCard} onPress={() => sendText("Помоги мне с законом — заполнить документ")}>
               <Text style={styles.quickTitle}>Помоги мне с законом</Text>
               <Text style={styles.quickSub}>заполнить документ</Text>
             </Pressable>
 
-            <Pressable style={styles.quickCard} onPress={() => send("Помоги мне выучить законы РК")}>
+            <Pressable style={styles.quickCard} onPress={() => sendText("Помоги мне выучить законы РК")}>
               <Text style={styles.quickTitle}>Помоги мне выучить</Text>
               <Text style={styles.quickSub}>законы РК</Text>
             </Pressable>
           </View>
 
+          {/* Input */}
           <View style={styles.promptRow}>
             <Pressable style={styles.plusBtn} onPress={() => setPlusOpen(true)}>
               <Ionicons name="add" size={24} color={colors.muted} />
@@ -325,18 +588,32 @@ export default function ChatScreen() {
                 placeholderTextColor={colors.muted}
                 style={styles.input}
                 returnKeyType="send"
-                onSubmitEditing={() => send()}
+                onSubmitEditing={() => sendText()}
               />
 
-              <Pressable style={styles.pillIcon} onPress={() => Alert.alert("Скоро", "Голосовой ввод добавим позже 🙂")}>
-                <Ionicons name="mic-outline" size={20} color={colors.text} />
+              {/* Mic */}
+              <Pressable
+                style={[styles.pillIcon, recording && { backgroundColor: "#FFE9E9" }]}
+                onPress={recording ? stopRecordingAndSend : startRecording}
+                disabled={sendingAttachment}
+              >
+                <Ionicons
+                  name={recording ? "stop-circle-outline" : "mic-outline"}
+                  size={22}
+                  color={recording ? "#B42318" : colors.text}
+                />
               </Pressable>
 
-              <Pressable style={styles.pillIcon} onPress={() => send()}>
+              {/* Send */}
+              <Pressable style={styles.pillIcon} onPress={() => sendText()} disabled={sendingAttachment}>
                 <Ionicons name="send-outline" size={20} color={colors.text} />
               </Pressable>
             </View>
           </View>
+
+          {recording ? (
+            <Text style={styles.recordHint}>Запись… {msToTime(recordingMs)} (нажми стоп чтобы отправить)</Text>
+          ) : null}
         </View>
       </KeyboardAvoidingView>
     </Screen>
@@ -354,6 +631,17 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
   },
   logo: { height: 26, width: 140, resizeMode: "contain" },
+  headerIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.white,
+  },
+
   divider: { height: 1, backgroundColor: colors.border },
 
   memoryRow: {
@@ -361,7 +649,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     paddingVertical: 10,
-    gap: 8,
+    gap: 10,
     backgroundColor: colors.white,
   },
   memoryText: { fontSize: 12, color: colors.muted, fontWeight: "600" },
@@ -376,6 +664,11 @@ const styles = StyleSheet.create({
   bubbleText: { fontSize: 15, lineHeight: 20 },
   userText: { color: "#fff" },
   assistantText: { color: "#111" },
+
+  imageMsg: { width: 240, height: 240, borderRadius: 14, backgroundColor: "#ddd" },
+
+  fileRow: { flexDirection: "row", alignItems: "center", gap: 10 },
+  audioRow: { flexDirection: "row", alignItems: "center", gap: 10 },
 
   emptyWrap: { flex: 1, justifyContent: "center", alignItems: "center", paddingHorizontal: 20 },
   emptyText: { color: colors.muted, textAlign: "center", lineHeight: 18 },
@@ -420,9 +713,11 @@ const styles = StyleSheet.create({
     paddingRight: 6,
   },
   input: { flex: 1, fontSize: 14, color: colors.text, paddingVertical: 0 },
-  pillIcon: { width: 34, height: 34, borderRadius: 17, alignItems: "center", justifyContent: "center" },
+  pillIcon: { width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center" },
 
-  // --- Sheet styles ---
+  recordHint: { marginTop: 8, textAlign: "center", fontSize: 12, color: colors.muted },
+
+  // Sheet
   sheetBackdrop: { position: "absolute", left: 0, right: 0, top: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.35)" },
   sheetWrap: { flex: 1, justifyContent: "flex-end" },
   sheetCard: {

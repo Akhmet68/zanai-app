@@ -13,7 +13,12 @@
     },
     "assetBundlePatterns": ["**/*"],
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSPhotoLibraryUsageDescription": "Нужно для выбора фото в чат.",
+        "NSCameraUsageDescription": "Нужно для съемки фото в чат.",
+        "NSMicrophoneUsageDescription": "Нужно для записи голосовых сообщений."
+      }
     },
     "android": {
       "adaptiveIcon": {
