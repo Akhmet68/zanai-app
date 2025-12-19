@@ -18,11 +18,13 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import Screen from "../../ui/Screen";
 import { colors } from "../../core/colors";
 
 const LOGO = require("../../../assets/zanai-logo.png");
+const KEY_FAVORITES = "zanai:favorites";
 
 type Lang = "RU" | "KZ";
 
