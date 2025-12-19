@@ -1,17 +1,10 @@
-const API_BASE = "http://192.168.0.23:3001"; // <-- замени на свой IPv4
+const API_BASE = "http://192.168.1.26:3001"; 
 
 export async function aiChat(messages: { role: "user" | "assistant"; content: string }[]) {
-  const payload = {
-    messages: messages.map((m) => ({
-      role: m.role,
-      content: m.content,
-    })),
-  };
-
   const r = await fetch(`${API_BASE}/chat`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
+    body: JSON.stringify({ messages }),
   });
 
   if (!r.ok) {
@@ -20,5 +13,5 @@ export async function aiChat(messages: { role: "user" | "assistant"; content: st
   }
 
   const data = (await r.json()) as { text: string };
-  return data.text;
+  return data.text ?? "";
 }

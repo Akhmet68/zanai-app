@@ -18,6 +18,22 @@ function guessExtFromMime(mime?: string) {
   return "";
 }
 
+function getWritableDir() {
+  const anyFS = FileSystem as any;
+  return (anyFS.cacheDirectory as string | undefined) ?? FileSystem.documentDirectory ?? null;
+}
+
+async function ensureFileUri(uri: string, fileName: string) {
+  if (!uri.startsWith("content://")) return uri;
+
+  const baseDir = getWritableDir();
+  if (!baseDir) throw new Error("Нет доступной директории для временных файлов.");
+
+  const dest = `${baseDir}${Date.now()}_${safeName(fileName)}`;
+  await FileSystem.copyAsync({ from: uri, to: dest });
+  return dest;
+}
+
 export async function uploadUriToStorage(params: {
   uid: string;
   uri: string;
@@ -25,13 +41,16 @@ export async function uploadUriToStorage(params: {
   fileName?: string;
   contentType?: string;
 }) {
-  const { uid, uri, folder } = params;
+  const { uid, folder } = params;
 
   const ext = guessExtFromMime(params.contentType);
   const baseName = params.fileName ? safeName(params.fileName) : `file_${Date.now()}${ext}`;
   const path = `users/${uid}/${folder}/${Date.now()}_${baseName}`;
 
-  const resp = await fetch(uri);
+  const fileUri = await ensureFileUri(params.uri, baseName);
+
+  // fetch(file://...) работает стабильно, а content:// часто ломается — поэтому мы выше копируем в file://
+  const resp = await fetch(fileUri);
   const blob = await resp.blob();
 
   const r = ref(storage, path);
@@ -41,7 +60,7 @@ export async function uploadUriToStorage(params: {
 
   let size: number | undefined;
   try {
-    const info: any = await FileSystem.getInfoAsync(uri);
+    const info: any = await FileSystem.getInfoAsync(fileUri);
     if (info?.exists && typeof info?.size === "number") size = info.size;
   } catch {}
 

@@ -25,6 +25,7 @@ import { colors } from "../../core/colors";
 import { useAuth } from "../../app/auth/AuthContext";
 import { fbClearChat, fbListenMessages, fbSendMessage, ChatMessage } from "../../app/firebase/chatService";
 import { uploadUriToStorage } from "../../app/firebase/storageService";
+import { aiChat } from "../../app/api/aiClient";
 
 const LOGO = require("../../../assets/zanai-logo.png");
 
@@ -193,13 +194,14 @@ export default function ChatScreen() {
 
   const [plusOpen, setPlusOpen] = useState(false);
   const [sendingAttachment, setSendingAttachment] = useState(false);
+  const [aiThinking, setAiThinking] = useState(false);
 
   // Voice
   const [recording, setRecording] = useState<Audio.Recording | null>(null);
   const [recordingMs, setRecordingMs] = useState(0);
   const recordTimerRef = useRef<any>(null);
 
-  // audio play (very MVP)
+  // audio play (MVP)
   const soundRef = useRef<Audio.Sound | null>(null);
 
   const listRef = useRef<FlatList<ChatMessage>>(null);
@@ -222,6 +224,9 @@ export default function ChatScreen() {
       try {
         soundRef.current?.unloadAsync();
       } catch {}
+      try {
+        if (recordTimerRef.current) clearInterval(recordTimerRef.current);
+      } catch {}
     };
   }, []);
 
@@ -238,34 +243,90 @@ export default function ChatScreen() {
     setMessages((p) => [...p, { id: String(Date.now()) + Math.random(), ...doc }]);
   };
 
+  const toAiPayload = (arr: ChatMessage[]) => {
+    // Контекст: берём последние 14 сообщений и превращаем в role/content
+    const slice = arr.slice(-14);
+    return slice.map((m) => {
+      if (m.type === "text") return { role: m.role as "user" | "assistant", content: m.text ?? "" };
+      if (m.type === "image") {
+        const cap = m.text ? `\nКомментарий: ${m.text}` : "";
+        return { role: m.role as "user" | "assistant", content: `[image] ${m.url ?? ""}${cap}` };
+      }
+      if (m.type === "file") {
+        return {
+          role: m.role as "user" | "assistant",
+          content: `[file] ${m.name ?? "file"} (${m.mime ?? ""}) ${m.url ?? ""}`,
+        };
+      }
+      if (m.type === "audio") {
+        return {
+          role: m.role as "user" | "assistant",
+          content: `[audio] ${msToTime(m.durationMs)} ${m.url ?? ""}`,
+        };
+      }
+      return { role: m.role as "user" | "assistant", content: m.text ?? "" };
+    });
+  };
+
+  const askAiAndRespond = async (draftMessagesForContext: ChatMessage[], userText: string) => {
+    setAiThinking(true);
+    try {
+      const payload = toAiPayload(draftMessagesForContext).concat({ role: "user", content: userText });
+      const answer = await aiChat(payload);
+
+      const finalText = (answer ?? "").trim() || "Пустой ответ 😅";
+
+      if (!user?.uid) {
+        sendLocal({ role: "assistant", type: "text", text: finalText });
+      } else {
+        await fbSendMessage(user.uid, { role: "assistant", type: "text", text: finalText });
+      }
+    } catch (e: any) {
+      const msg = e?.message ?? "Не удалось получить ответ от AI.";
+      if (!user?.uid) {
+        sendLocal({ role: "assistant", type: "text", text: `⚠️ AI ошибка: ${msg}` });
+      } else {
+        await fbSendMessage(user.uid, { role: "assistant", type: "text", text: `⚠️ AI ошибка: ${msg}` });
+      }
+    } finally {
+      setAiThinking(false);
+    }
+  };
+
   const sendText = async (text?: string) => {
     const trimmed = (text ?? input).trim();
     if (!trimmed) return;
 
+    if (sendingAttachment || aiThinking) return; // чтобы не спамили
+
     Keyboard.dismiss();
     setInput("");
 
-    // guest => local
+    // Гость/без входа: локально + всё равно можно дергать AI через сервер (если у тебя сервер поднят)
     if (!user?.uid) {
-      sendLocal({ role: "user", type: "text", text: trimmed });
-      setTimeout(() => {
-        sendLocal({ role: "assistant", type: "text", text: `Понял 🙂 (демо)\nТы написал: “${trimmed}”.` });
-      }, 300);
+      const localUserMsg: ChatMessage = {
+        id: String(Date.now()) + Math.random(),
+        role: "user",
+        type: "text",
+        text: trimmed,
+      };
+      setMessages((p) => [...p, localUserMsg]);
+
+      await askAiAndRespond([...messages, localUserMsg], trimmed);
       return;
     }
 
+    // Авторизован: сохраняем в Firestore
     await fbSendMessage(user.uid, { role: "user", type: "text", text: trimmed });
 
-    // демо-ответ (пока без AI)
-    setTimeout(async () => {
-      try {
-        await fbSendMessage(user.uid, {
-          role: "assistant",
-          type: "text",
-          text: `Понял 🙂 (демо)\nТы написал: “${trimmed}”.`,
-        });
-      } catch {}
-    }, 300);
+    // Важно: контекст берём из текущих messages + новый текст (чтобы AI видел свежий вопрос)
+    const draft: ChatMessage = {
+      id: "__draft__",
+      role: "user",
+      type: "text",
+      text: trimmed,
+    };
+    await askAiAndRespond([...messages, draft], trimmed);
   };
 
   // ---------- Attachments ----------
@@ -305,8 +366,10 @@ export default function ChatScreen() {
   };
 
   const sendImage = async (uri: string, name: string, mime: string) => {
+    if (sendingAttachment) return;
+
     if (!user?.uid) {
-      // guest => local (без upload)
+      // гость: без загрузки в storage
       sendLocal({ role: "user", type: "image", url: uri, name, mime });
       return;
     }
@@ -342,7 +405,7 @@ export default function ChatScreen() {
 
     const res = await DocumentPicker.getDocumentAsync({
       multiple: false,
-      copyToCacheDirectory: true, // ВАЖНО: чтобы не было content:// проблем на Android
+      copyToCacheDirectory: true, // важно для Android
     });
 
     if (res.canceled) return;
@@ -405,6 +468,8 @@ export default function ChatScreen() {
 
   // ---------- Voice ----------
   const startRecording = async () => {
+    if (sendingAttachment || aiThinking) return;
+
     try {
       const perm = await Audio.requestPermissionsAsync();
       if (!perm.granted) return Alert.alert("Доступ", "Нужен доступ к микрофону.");
@@ -434,7 +499,7 @@ export default function ChatScreen() {
   };
 
   const stopRecordingAndSend = async () => {
-    if (!recording) return;
+    if (!recording || sendingAttachment) return;
 
     try {
       if (recordTimerRef.current) clearInterval(recordTimerRef.current);
@@ -449,7 +514,6 @@ export default function ChatScreen() {
 
       if (!uri) return Alert.alert("Ошибка", "Не удалось получить файл записи.");
 
-      // guest => local
       if (!user?.uid) {
         sendLocal({ role: "user", type: "audio", url: uri, name: "voice.m4a", mime: "audio/m4a", durationMs });
         return;
@@ -488,24 +552,26 @@ export default function ChatScreen() {
     if (!m.url) return;
 
     try {
-      // остановим прошлый звук
       if (soundRef.current) {
         await soundRef.current.unloadAsync();
         soundRef.current = null;
       }
 
-      const { sound } = await Audio.Sound.createAsync(
-        { uri: m.url },
-        { shouldPlay: true }
-      );
-
+      const { sound } = await Audio.Sound.createAsync({ uri: m.url }, { shouldPlay: true });
       soundRef.current = sound;
     } catch {
       Alert.alert("Ошибка", "Не удалось воспроизвести аудио.");
     }
   };
 
-  const memoryLabel = user?.uid ? "Память включена (профиль)" : guest ? "Гостевой режим" : "Без входа";
+  const memoryLabel = user?.uid
+    ? "Память включена (профиль)"
+    : guest
+      ? "Гостевой режим"
+      : "Без входа";
+
+  const statusLabel =
+    sendingAttachment ? "Отправка..." : aiThinking ? "AI печатает..." : memoryLabel;
 
   return (
     <Screen contentStyle={{ paddingTop: 0 }}>
@@ -531,8 +597,8 @@ export default function ChatScreen() {
 
       <View style={styles.memoryRow}>
         <Ionicons name="sparkles-outline" size={14} color={colors.muted} />
-        <Text style={styles.memoryText}>{memoryLabel}</Text>
-        {sendingAttachment ? <ActivityIndicator size="small" color={colors.navy} /> : null}
+        <Text style={styles.memoryText}>{statusLabel}</Text>
+        {(sendingAttachment || aiThinking) ? <ActivityIndicator size="small" color={colors.navy} /> : null}
       </View>
 
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
@@ -563,12 +629,20 @@ export default function ChatScreen() {
         <View style={styles.footer}>
           {/* Quick prompts */}
           <View style={styles.quickRow}>
-            <Pressable style={styles.quickCard} onPress={() => sendText("Помоги мне с законом — заполнить документ")}>
+            <Pressable
+              style={styles.quickCard}
+              onPress={() => sendText("Помоги мне с законом — заполнить документ")}
+              disabled={aiThinking || sendingAttachment}
+            >
               <Text style={styles.quickTitle}>Помоги мне с законом</Text>
               <Text style={styles.quickSub}>заполнить документ</Text>
             </Pressable>
 
-            <Pressable style={styles.quickCard} onPress={() => sendText("Помоги мне выучить законы РК")}>
+            <Pressable
+              style={styles.quickCard}
+              onPress={() => sendText("Помоги мне выучить законы РК")}
+              disabled={aiThinking || sendingAttachment}
+            >
               <Text style={styles.quickTitle}>Помоги мне выучить</Text>
               <Text style={styles.quickSub}>законы РК</Text>
             </Pressable>
@@ -576,7 +650,11 @@ export default function ChatScreen() {
 
           {/* Input */}
           <View style={styles.promptRow}>
-            <Pressable style={styles.plusBtn} onPress={() => setPlusOpen(true)}>
+            <Pressable
+              style={styles.plusBtn}
+              onPress={() => setPlusOpen(true)}
+              disabled={aiThinking || sendingAttachment}
+            >
               <Ionicons name="add" size={24} color={colors.muted} />
             </Pressable>
 
@@ -589,13 +667,14 @@ export default function ChatScreen() {
                 style={styles.input}
                 returnKeyType="send"
                 onSubmitEditing={() => sendText()}
+                editable={!aiThinking && !sendingAttachment}
               />
 
               {/* Mic */}
               <Pressable
                 style={[styles.pillIcon, recording && { backgroundColor: "#FFE9E9" }]}
                 onPress={recording ? stopRecordingAndSend : startRecording}
-                disabled={sendingAttachment}
+                disabled={sendingAttachment || aiThinking}
               >
                 <Ionicons
                   name={recording ? "stop-circle-outline" : "mic-outline"}
@@ -605,7 +684,7 @@ export default function ChatScreen() {
               </Pressable>
 
               {/* Send */}
-              <Pressable style={styles.pillIcon} onPress={() => sendText()} disabled={sendingAttachment}>
+              <Pressable style={styles.pillIcon} onPress={() => sendText()} disabled={sendingAttachment || aiThinking}>
                 <Ionicons name="send-outline" size={20} color={colors.text} />
               </Pressable>
             </View>
