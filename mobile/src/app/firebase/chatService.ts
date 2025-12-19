@@ -1,12 +1,14 @@
 import {
   addDoc,
   collection,
+  getDocs,
+  limit,
   onSnapshot,
   orderBy,
   query,
   serverTimestamp,
-  limit,
   Timestamp,
+  writeBatch,
 } from "firebase/firestore";
 import { db } from "./firebase";
 
@@ -51,4 +53,13 @@ export async function fbSendMessage(uid: string, role: ChatRole, text: string) {
     text: trimmed,
     createdAt: serverTimestamp(),
   });
+}
+
+export async function fbClearChat(uid: string) {
+  const q = query(messagesCol(uid), orderBy("createdAt", "desc"), limit(500));
+  const snap = await getDocs(q);
+
+  const batch = writeBatch(db);
+  snap.docs.forEach((d) => batch.delete(d.ref));
+  await batch.commit();
 }
