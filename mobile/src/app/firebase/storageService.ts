@@ -18,20 +18,43 @@ function guessExtFromMime(mime?: string) {
   return "";
 }
 
-function getWritableDir() {
-  const anyFS = FileSystem as any;
-  return (anyFS.cacheDirectory as string | undefined) ?? FileSystem.documentDirectory ?? null;
+const FS: any = FileSystem;
+
+function getWritableDir(): string | null {
+  return (FS.cacheDirectory as string | undefined) ?? (FS.documentDirectory as string | undefined) ?? null;
+}
+
+function joinPath(dir: string, file: string) {
+  const d = dir.endsWith("/") ? dir : `${dir}/`;
+  return `${d}${file}`;
 }
 
 async function ensureFileUri(uri: string, fileName: string) {
-  if (!uri.startsWith("content://")) return uri;
+  const isWeird =
+    uri.startsWith("content://") ||
+    uri.startsWith("ph://") ||
+    uri.startsWith("assets-library://");
+
+  if (!isWeird) return uri;
 
   const baseDir = getWritableDir();
-  if (!baseDir) throw new Error("Нет доступной директории для временных файлов.");
+  if (!baseDir) throw new Error("Нет доступной директории для временных файлов (expo-file-system).");
 
-  const dest = `${baseDir}${Date.now()}_${safeName(fileName)}`;
-  await FileSystem.copyAsync({ from: uri, to: dest });
+  const dest = joinPath(baseDir, `${Date.now()}_${safeName(fileName)}`);
+
+  await FS.copyAsync({ from: uri, to: dest });
   return dest;
+}
+
+async function uriToBlob(uri: string): Promise<Blob> {
+  return await new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.onerror = () => reject(new Error("Не удалось прочитать файл (XHR)."));
+    xhr.onload = () => resolve(xhr.response);
+    xhr.responseType = "blob";
+    xhr.open("GET", uri, true);
+    xhr.send(null);
+  });
 }
 
 export async function uploadUriToStorage(params: {
@@ -49,9 +72,7 @@ export async function uploadUriToStorage(params: {
 
   const fileUri = await ensureFileUri(params.uri, baseName);
 
-  // fetch(file://...) работает стабильно, а content:// часто ломается — поэтому мы выше копируем в file://
-  const resp = await fetch(fileUri);
-  const blob = await resp.blob();
+  const blob = await uriToBlob(fileUri);
 
   const r = ref(storage, path);
   await uploadBytes(r, blob, params.contentType ? { contentType: params.contentType } : undefined);
@@ -60,7 +81,7 @@ export async function uploadUriToStorage(params: {
 
   let size: number | undefined;
   try {
-    const info: any = await FileSystem.getInfoAsync(fileUri);
+    const info: any = await FS.getInfoAsync(fileUri);
     if (info?.exists && typeof info?.size === "number") size = info.size;
   } catch {}
 

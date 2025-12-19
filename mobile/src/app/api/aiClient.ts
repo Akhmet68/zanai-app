@@ -1,4 +1,4 @@
-const API_BASE = "http://192.168.1.26:3001"; 
+const API_BASE = process.env.EXPO_PUBLIC_API_BASE ?? "http://192.168.1.26:3001";
 
 export async function aiChat(messages: { role: "user" | "assistant"; content: string }[]) {
   const r = await fetch(`${API_BASE}/chat`, {
