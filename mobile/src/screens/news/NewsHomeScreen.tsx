@@ -15,6 +15,7 @@ import {
   Share,
   Linking,
 } from "react-native";
+import type { ColorValue } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -208,6 +209,8 @@ if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
+type GradientColors = readonly [ColorValue, ColorValue, ...ColorValue[]];
+
 export default function NewsHomeScreen() {
   const insets = useSafeAreaInsets();
 
@@ -228,8 +231,9 @@ export default function NewsHomeScreen() {
   const allNewsRef = useRef<NewsItem[]>(buildMockNews());
   const allNews = allNewsRef.current;
 
-  const saveTimerRef = useRef<any>(null);
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const bookmarksRef = useRef<Record<string, boolean>>({});
+
   useEffect(() => {
     bookmarksRef.current = bookmarks;
   }, [bookmarks]);
@@ -269,8 +273,8 @@ export default function NewsHomeScreen() {
 
   const list = useMemo(() => filtered.slice(0, visibleCount), [filtered, visibleCount]);
 
-  // Детали новости (модалка)
   const [active, setActive] = useState<NewsItem | null>(null);
+
   const openItem = useCallback((n: NewsItem) => {
     setRead((prev) => {
       if (prev[n.id]) return prev;
@@ -279,42 +283,37 @@ export default function NewsHomeScreen() {
     setActive(n);
   }, []);
 
-  const buildFavoritesPreview = useCallback(
-    (map: Record<string, boolean>) => {
-      const savedIds = Object.keys(map).filter((id) => map[id]);
-      if (savedIds.length === 0) return [] as FavoritePreview[];
+  const buildFavoritesPreview = useCallback((map: Record<string, boolean>) => {
+    const savedIds = Object.keys(map).filter((id) => map[id]);
+    if (savedIds.length === 0) return [] as FavoritePreview[];
 
-      // быстрый доступ по id
-      const byId = new Map<string, NewsItem>();
-      for (const n of allNewsRef.current) byId.set(n.id, n);
+    const byId = new Map<string, NewsItem>();
+    for (const n of allNewsRef.current) byId.set(n.id, n);
 
-      const res: FavoritePreview[] = [];
-      for (const id of savedIds) {
-        const n = byId.get(id);
-        if (!n) continue;
-        res.push({
-          id: n.id,
-          titleRU: n.titleRU,
-          titleKZ: n.titleKZ,
-          subtitleRU: n.subtitleRU,
-          subtitleKZ: n.subtitleKZ,
-          source: n.source,
-          createdAtISO: n.createdAtISO,
-          url: n.url,
-        });
-      }
+    const res: FavoritePreview[] = [];
+    for (const id of savedIds) {
+      const n = byId.get(id);
+      if (!n) continue;
+      res.push({
+        id: n.id,
+        titleRU: n.titleRU,
+        titleKZ: n.titleKZ,
+        subtitleRU: n.subtitleRU,
+        subtitleKZ: n.subtitleKZ,
+        source: n.source,
+        createdAtISO: n.createdAtISO,
+        url: n.url,
+      });
+    }
 
-      res.sort((a, b) => (b.createdAtISO ?? "").localeCompare(a.createdAtISO ?? ""));
-      return res;
-    },
-    []
-  );
+    res.sort((a, b) => (b.createdAtISO ?? "").localeCompare(a.createdAtISO ?? ""));
+    return res;
+  }, []);
 
   const persistFavoritesDebounced = useCallback(
     (next: Record<string, boolean>) => {
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
 
-      // debounce, чтобы не писать в AsyncStorage на каждый тап
       saveTimerRef.current = setTimeout(async () => {
         try {
           const previews = buildFavoritesPreview(next);
@@ -332,7 +331,6 @@ export default function NewsHomeScreen() {
 
   const toggleBookmark = useCallback(
     (id: string) => {
-      // LayoutAnimation красиво, но используем аккуратно (список небольшой)
       LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
 
       setBookmarks((prev) => {
@@ -348,7 +346,6 @@ export default function NewsHomeScreen() {
     setRefreshing(true);
     await new Promise((r) => setTimeout(r, 650));
 
-    // демо: перемешаем хвост
     const head = allNewsRef.current.slice(0, 6);
     const tail = allNewsRef.current.slice(6).sort(() => Math.random() - 0.5);
     allNewsRef.current = [...head, ...tail];
@@ -357,7 +354,6 @@ export default function NewsHomeScreen() {
     setQuery("");
     setRefreshing(false);
 
-    // обновим превью избранного (на случай, если данные поменялись)
     persistFavoritesDebounced(bookmarksRef.current);
   }, [persistFavoritesDebounced]);
 
@@ -370,7 +366,6 @@ export default function NewsHomeScreen() {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setSettings((p) => ({ ...p, lang: p.lang === "RU" ? "KZ" : "RU" }));
 
-    // сохраняем язык в профиль-настройки, чтобы другие экраны подхватывали
     try {
       const raw = await AsyncStorage.getItem(KEY_PROFILE_SETTINGS);
       const prev = raw ? (JSON.parse(raw) as Partial<Settings>) : {};
@@ -395,17 +390,20 @@ export default function NewsHomeScreen() {
       await Share.share({
         message: `${title}\n\n${text}${active.url ? `\n\n${active.url}` : ""}`,
       });
-    } catch {}
+    } catch {
+      // молча
+    }
   }, [active, lang]);
 
   const openSource = useCallback(async () => {
     if (!active?.url) return;
     try {
       await Linking.openURL(active.url);
-    } catch {}
+    } catch {
+      // молча
+    }
   }, [active]);
 
-  // авто-сбрасываем “ещё” если фильтр/поиск сузили список
   useEffect(() => {
     if (visibleCount > filtered.length) setVisibleCount(Math.min(6, filtered.length));
   }, [filtered.length, visibleCount]);
@@ -439,34 +437,29 @@ export default function NewsHomeScreen() {
   useEffect(() => {
     hydrate();
     return () => {
-      try {
-        if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-      } catch {}
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     };
   }, [hydrate]);
 
-  // Если избранное меняли в другом экране — подхватим на фокусе
   useFocusEffect(
     useCallback(() => {
       hydrate();
     }, [hydrate])
   );
 
-  const heroGradient = useMemo(() => {
-    if (!theme.dark) return ["#0B1E5B", "#1B2C63", theme.bg] as const;
-    return ["#0B1E5B", "#0F172A", theme.bg] as const;
+  const heroGradient = useMemo<GradientColors>(() => {
+    return theme.dark ? ["#0B1E5B", "#0F172A", theme.bg] : ["#0B1E5B", "#1B2C63", theme.bg];
   }, [theme.bg, theme.dark]);
 
   return (
-    <Screen style={[styles.screen, { backgroundColor: theme.bg }]}>
+    <Screen style={StyleSheet.flatten([styles.screen, { backgroundColor: theme.bg }])}>
       <ScrollView
         contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + 6 }]}
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
-        {/* Hero / Header */}
         <LinearGradient
-          colors={heroGradient as any}
+          colors={heroGradient}
           locations={[0, 0.55, 1]}
           style={[styles.hero, { borderColor: theme.border }]}
         >
@@ -474,7 +467,10 @@ export default function NewsHomeScreen() {
             <Image source={LOGO} style={styles.logo} />
 
             <View style={styles.headerRight}>
-              <Pressable style={[styles.pill, { borderColor: theme.border, backgroundColor: theme.card }]} onPress={toggleLang}>
+              <Pressable
+                style={[styles.pill, { borderColor: theme.border, backgroundColor: theme.card }]}
+                onPress={toggleLang}
+              >
                 <Text style={[styles.pillText, { color: theme.text }]}>{lang}</Text>
                 <Ionicons name="chevron-down" size={16} color={theme.muted} />
               </Pressable>
@@ -490,7 +486,10 @@ export default function NewsHomeScreen() {
                 <Ionicons name={searchOpen ? "close" : "search-outline"} size={22} color={theme.text} />
               </Pressable>
 
-              <Pressable style={[styles.iconBtn, { borderColor: theme.border, backgroundColor: theme.card }]} onPress={() => {}}>
+              <Pressable
+                style={[styles.iconBtn, { borderColor: theme.border, backgroundColor: theme.card }]}
+                onPress={() => {}}
+              >
                 <Ionicons name="notifications-outline" size={22} color={theme.text} />
               </Pressable>
             </View>
@@ -532,7 +531,6 @@ export default function NewsHomeScreen() {
           )}
         </LinearGradient>
 
-        {/* Новости дня */}
         <View style={styles.sectionHead}>
           <Text style={[styles.sectionTitle, { color: theme.text }]}>{t(lang, "Новости дня", "Күн жаңалықтары")}</Text>
           <Text style={[styles.sectionHint, { color: theme.muted }]}>{t(lang, "самое важное", "ең маңыздысы")}</Text>
@@ -562,7 +560,12 @@ export default function NewsHomeScreen() {
                       {t(lang, " мин", " мин")}
                     </Text>
                     {isRead && (
-                      <Text style={[styles.readBadge, { backgroundColor: theme.badgeBg, color: theme.badgeText, borderColor: theme.border }]}>
+                      <Text
+                        style={[
+                          styles.readBadge,
+                          { backgroundColor: theme.badgeBg, color: theme.badgeText, borderColor: theme.border },
+                        ]}
+                      >
                         {t(lang, "прочитано", "оқылды")}
                       </Text>
                     )}
@@ -595,7 +598,6 @@ export default function NewsHomeScreen() {
           })}
         </View>
 
-        {/* Тренды */}
         <View style={[styles.sectionHead, { marginTop: 16 }]}>
           <Text style={[styles.sectionTitle, { color: theme.text }]}>{t(lang, "Тренды", "Трендтер")}</Text>
           <Text style={[styles.sectionHint, { color: theme.muted }]}>{t(lang, "подборка", "іріктеу")}</Text>
@@ -642,7 +644,6 @@ export default function NewsHomeScreen() {
           })}
         </ScrollView>
 
-        {/* Фильтры */}
         <View style={[styles.sectionHead, { marginTop: 16 }]}>
           <Text style={[styles.sectionTitle, { color: theme.text }]}>{t(lang, "Лента", "Лента")}</Text>
           <Text style={[styles.sectionHint, { color: theme.muted }]}>{t(lang, "фильтры", "сүзгілер")}</Text>
@@ -672,7 +673,6 @@ export default function NewsHomeScreen() {
           })}
         </ScrollView>
 
-        {/* Список */}
         {list.length === 0 ? (
           <View style={[styles.empty, { borderColor: theme.border, backgroundColor: theme.card }]}>
             <Ionicons name="search-outline" size={26} color={theme.muted} />
@@ -718,7 +718,12 @@ export default function NewsHomeScreen() {
                         {t(lang, " мин", " мин")}
                       </Text>
                       {isRead && (
-                        <Text style={[styles.readBadge, { backgroundColor: theme.badgeBg, color: theme.badgeText, borderColor: theme.border }]}>
+                        <Text
+                          style={[
+                            styles.readBadge,
+                            { backgroundColor: theme.badgeBg, color: theme.badgeText, borderColor: theme.border },
+                          ]}
+                        >
                           {t(lang, "прочитано", "оқылды")}
                         </Text>
                       )}
@@ -751,9 +756,7 @@ export default function NewsHomeScreen() {
 
                       <View style={[styles.dot, { backgroundColor: theme.border }]} />
 
-                      <Text style={[styles.actionHint, { color: theme.muted }]}>
-                        {t(lang, "Нажми, чтобы читать", "Оқу үшін бас")}
-                      </Text>
+                      <Text style={[styles.actionHint, { color: theme.muted }]}>{t(lang, "Нажми, чтобы читать", "Оқу үшін бас")}</Text>
                     </View>
                   </View>
                 </Pressable>
@@ -762,7 +765,6 @@ export default function NewsHomeScreen() {
           </View>
         )}
 
-        {/* Load more */}
         {filtered.length > visibleCount && (
           <Pressable style={[styles.primaryBtn, { backgroundColor: colors.navy }]} onPress={loadMore}>
             <Text style={styles.primaryBtnText}>
@@ -774,16 +776,13 @@ export default function NewsHomeScreen() {
         <View style={{ height: 30 }} />
       </ScrollView>
 
-      {/* DETAILS MODAL */}
-      <Modal
-        visible={!!active}
-        animationType="slide"
-        onRequestClose={() => setActive(null)}
-        presentationStyle="pageSheet"
-      >
+      <Modal visible={!!active} animationType="slide" onRequestClose={() => setActive(null)} presentationStyle="pageSheet">
         <View style={[styles.modalWrap, { paddingTop: insets.top + 10, backgroundColor: theme.bg }]}>
           <View style={styles.modalHeader}>
-            <Pressable style={[styles.modalIconBtn, { borderColor: theme.border, backgroundColor: theme.card }]} onPress={() => setActive(null)}>
+            <Pressable
+              style={[styles.modalIconBtn, { borderColor: theme.border, backgroundColor: theme.card }]}
+              onPress={() => setActive(null)}
+            >
               <Ionicons name="chevron-down" size={24} color={theme.text} />
             </Pressable>
 
@@ -791,7 +790,10 @@ export default function NewsHomeScreen() {
               {t(lang, "Материал", "Материал")}
             </Text>
 
-            <Pressable style={[styles.modalIconBtn, { borderColor: theme.border, backgroundColor: theme.card }]} onPress={shareActive}>
+            <Pressable
+              style={[styles.modalIconBtn, { borderColor: theme.border, backgroundColor: theme.card }]}
+              onPress={shareActive}
+            >
               <Ionicons name="share-outline" size={22} color={theme.text} />
             </Pressable>
           </View>
@@ -799,9 +801,7 @@ export default function NewsHomeScreen() {
           <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 28 }}>
             {active && (
               <>
-                <Text style={[styles.modalTitle, { color: theme.text }]}>
-                  {lang === "RU" ? active.titleRU : active.titleKZ}
-                </Text>
+                <Text style={[styles.modalTitle, { color: theme.text }]}>{lang === "RU" ? active.titleRU : active.titleKZ}</Text>
 
                 <Text style={[styles.modalMeta, { color: theme.muted }]}>
                   {active.source} • {fmtDate(active.createdAtISO, lang)} • {active.minutes}
@@ -810,9 +810,7 @@ export default function NewsHomeScreen() {
 
                 <View style={[styles.modalDivider, { backgroundColor: theme.border }]} />
 
-                <Text style={[styles.modalBody, { color: theme.text }]}>
-                  {lang === "RU" ? active.bodyRU : active.bodyKZ}
-                </Text>
+                <Text style={[styles.modalBody, { color: theme.text }]}>{lang === "RU" ? active.bodyRU : active.bodyKZ}</Text>
 
                 {!!active.url && (
                   <Pressable style={[styles.openBtn, { backgroundColor: colors.navy }]} onPress={openSource}>
@@ -825,11 +823,7 @@ export default function NewsHomeScreen() {
                   style={[styles.secondaryBtn, { borderColor: theme.border, backgroundColor: theme.card }]}
                   onPress={() => toggleBookmark(active.id)}
                 >
-                  <Ionicons
-                    name={bookmarks[active.id] ? "bookmark" : "bookmark-outline"}
-                    size={18}
-                    color={theme.text}
-                  />
+                  <Ionicons name={bookmarks[active.id] ? "bookmark" : "bookmark-outline"} size={18} color={theme.text} />
                   <Text style={[styles.secondaryBtnText, { color: theme.text }]}>
                     {bookmarks[active.id]
                       ? t(lang, "Убрать из избранного", "Таңдаулыдан алып тастау")
@@ -850,7 +844,7 @@ const styles = StyleSheet.create({
 
   scrollContent: {
     paddingHorizontal: 16,
-    paddingBottom: 110, // место под tabbar
+    paddingBottom: 110,
   },
 
   hero: {
@@ -1036,7 +1030,6 @@ const styles = StyleSheet.create({
   emptyTitle: { marginTop: 10, fontSize: 14, fontWeight: "900" },
   emptySub: { marginTop: 6, fontSize: 12, textAlign: "center", lineHeight: 18 },
 
-  // Modal
   modalWrap: { flex: 1, paddingHorizontal: 16 },
   modalHeader: {
     flexDirection: "row",
