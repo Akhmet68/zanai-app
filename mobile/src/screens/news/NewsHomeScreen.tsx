@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -19,14 +19,19 @@ import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useFocusEffect } from "@react-navigation/native";
 
 import Screen from "../../ui/Screen";
 import { colors } from "../../core/colors";
 
 const LOGO = require("../../../assets/zanai-logo.png");
+
+const KEY_PROFILE_SETTINGS = "zanai:profile:settings";
 const KEY_FAVORITES = "zanai:favorites";
+const KEY_FAVORITES_ITEMS = "zanai:favorites_items";
 
 type Lang = "RU" | "KZ";
+type Settings = { lang: Lang; darkMode: boolean };
 
 type Chip = { key: string; labelRU: string; labelKZ: string };
 
@@ -45,12 +50,23 @@ type NewsItem = {
   bodyKZ: string;
 };
 
-function fmtDate(iso: string, lang: Lang) {
+type FavoritePreview = {
+  id: string;
+  titleRU: string;
+  titleKZ: string;
+  subtitleRU?: string;
+  subtitleKZ?: string;
+  source?: string;
+  createdAtISO?: string;
+  url?: string;
+};
+
+function fmtDate(iso: string, _lang: Lang) {
   const d = new Date(iso);
   const dd = String(d.getDate()).padStart(2, "0");
   const mm = String(d.getMonth() + 1).padStart(2, "0");
   const yyyy = d.getFullYear();
-  return lang === "RU" ? `${dd}.${mm}.${yyyy}` : `${dd}.${mm}.${yyyy}`;
+  return `${dd}.${mm}.${yyyy}`;
 }
 
 function t(lang: Lang, ru: string, kz: string) {
@@ -58,7 +74,6 @@ function t(lang: Lang, ru: string, kz: string) {
 }
 
 function buildMockNews(): NewsItem[] {
-  // Демоданные — можно потом заменить на API/Firebase
   const now = Date.now();
   const day = 24 * 60 * 60 * 1000;
   const items: NewsItem[] = [
@@ -140,7 +155,6 @@ function buildMockNews(): NewsItem[] {
     },
   ];
 
-  // Добавим ещё пачку “обычных” новостей
   const extra: NewsItem[] = Array.from({ length: 18 }).map((_, i) => {
     const id = `nx${i + 1}`;
     const cats: NewsItem["category"][] = ["law", "tech", "soc", "biz"];
@@ -197,7 +211,9 @@ if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental
 export default function NewsHomeScreen() {
   const insets = useSafeAreaInsets();
 
-  const [lang, setLang] = useState<Lang>("RU");
+  const [settings, setSettings] = useState<Settings>({ lang: "RU", darkMode: false });
+  const lang = settings.lang;
+
   const [chip, setChip] = useState<ChipKey>("all");
 
   const [searchOpen, setSearchOpen] = useState(false);
@@ -212,10 +228,28 @@ export default function NewsHomeScreen() {
   const allNewsRef = useRef<NewsItem[]>(buildMockNews());
   const allNews = allNewsRef.current;
 
-  const bookmarkCount = useMemo(
-    () => Object.values(bookmarks).filter(Boolean).length,
-    [bookmarks]
-  );
+  const saveTimerRef = useRef<any>(null);
+  const bookmarksRef = useRef<Record<string, boolean>>({});
+  useEffect(() => {
+    bookmarksRef.current = bookmarks;
+  }, [bookmarks]);
+
+  const theme = useMemo(() => {
+    const dark = settings.darkMode;
+    return {
+      dark,
+      bg: dark ? "#0B0B0D" : colors.white,
+      card: dark ? "#111115" : colors.white,
+      border: dark ? "rgba(255,255,255,0.12)" : colors.border,
+      text: dark ? "#F8FAFC" : colors.text,
+      muted: dark ? "#A1A1AA" : colors.muted,
+      soft: dark ? "#1B1B22" : "#F7F7F9",
+      badgeBg: dark ? "rgba(96,165,250,0.10)" : "#F5F7FF",
+      badgeText: colors.navy,
+    };
+  }, [settings.darkMode]);
+
+  const bookmarkCount = useMemo(() => Object.values(bookmarks).filter(Boolean).length, [bookmarks]);
 
   const dayNews = useMemo(() => allNews.slice(0, 2), [allNews]);
   const trending = useMemo(() => allNews.slice(2, 8), [allNews]);
@@ -237,39 +271,123 @@ export default function NewsHomeScreen() {
 
   // Детали новости (модалка)
   const [active, setActive] = useState<NewsItem | null>(null);
-  const openItem = (n: NewsItem) => {
-    setRead((prev) => ({ ...prev, [n.id]: true }));
+  const openItem = useCallback((n: NewsItem) => {
+    setRead((prev) => {
+      if (prev[n.id]) return prev;
+      return { ...prev, [n.id]: true };
+    });
     setActive(n);
-  };
+  }, []);
 
-  const toggleBookmark = (id: string) => {
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    setBookmarks((prev) => ({ ...prev, [id]: !prev[id] }));
-  };
+  const buildFavoritesPreview = useCallback(
+    (map: Record<string, boolean>) => {
+      const savedIds = Object.keys(map).filter((id) => map[id]);
+      if (savedIds.length === 0) return [] as FavoritePreview[];
 
-  const onRefresh = async () => {
+      // быстрый доступ по id
+      const byId = new Map<string, NewsItem>();
+      for (const n of allNewsRef.current) byId.set(n.id, n);
+
+      const res: FavoritePreview[] = [];
+      for (const id of savedIds) {
+        const n = byId.get(id);
+        if (!n) continue;
+        res.push({
+          id: n.id,
+          titleRU: n.titleRU,
+          titleKZ: n.titleKZ,
+          subtitleRU: n.subtitleRU,
+          subtitleKZ: n.subtitleKZ,
+          source: n.source,
+          createdAtISO: n.createdAtISO,
+          url: n.url,
+        });
+      }
+
+      res.sort((a, b) => (b.createdAtISO ?? "").localeCompare(a.createdAtISO ?? ""));
+      return res;
+    },
+    []
+  );
+
+  const persistFavoritesDebounced = useCallback(
+    (next: Record<string, boolean>) => {
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+
+      // debounce, чтобы не писать в AsyncStorage на каждый тап
+      saveTimerRef.current = setTimeout(async () => {
+        try {
+          const previews = buildFavoritesPreview(next);
+          await AsyncStorage.multiSet([
+            [KEY_FAVORITES, JSON.stringify(next)],
+            [KEY_FAVORITES_ITEMS, JSON.stringify(previews)],
+          ]);
+        } catch {
+          // молча
+        }
+      }, 220);
+    },
+    [buildFavoritesPreview]
+  );
+
+  const toggleBookmark = useCallback(
+    (id: string) => {
+      // LayoutAnimation красиво, но используем аккуратно (список небольшой)
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+
+      setBookmarks((prev) => {
+        const next = { ...prev, [id]: !prev[id] };
+        persistFavoritesDebounced(next);
+        return next;
+      });
+    },
+    [persistFavoritesDebounced]
+  );
+
+  const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await new Promise((r) => setTimeout(r, 700));
-    // “обновление” демо: просто перемешаем хвост
+    await new Promise((r) => setTimeout(r, 650));
+
+    // демо: перемешаем хвост
     const head = allNewsRef.current.slice(0, 6);
     const tail = allNewsRef.current.slice(6).sort(() => Math.random() - 0.5);
     allNewsRef.current = [...head, ...tail];
+
     setVisibleCount(6);
     setQuery("");
     setRefreshing(false);
-  };
 
-  const loadMore = () => {
+    // обновим превью избранного (на случай, если данные поменялись)
+    persistFavoritesDebounced(bookmarksRef.current);
+  }, [persistFavoritesDebounced]);
+
+  const loadMore = useCallback(() => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setVisibleCount((v) => Math.min(v + 8, filtered.length));
-  };
+  }, [filtered.length]);
 
-  const toggleLang = () => {
+  const toggleLang = useCallback(async () => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    setLang((v) => (v === "RU" ? "KZ" : "RU"));
-  };
+    setSettings((p) => ({ ...p, lang: p.lang === "RU" ? "KZ" : "RU" }));
 
-  const shareActive = async () => {
+    // сохраняем язык в профиль-настройки, чтобы другие экраны подхватывали
+    try {
+      const raw = await AsyncStorage.getItem(KEY_PROFILE_SETTINGS);
+      const prev = raw ? (JSON.parse(raw) as Partial<Settings>) : {};
+      const nextLang: Lang = (settings.lang === "RU" ? "KZ" : "RU") as Lang;
+      await AsyncStorage.setItem(
+        KEY_PROFILE_SETTINGS,
+        JSON.stringify({
+          lang: nextLang,
+          darkMode: typeof prev.darkMode === "boolean" ? prev.darkMode : settings.darkMode,
+        })
+      );
+    } catch {
+      // молча
+    }
+  }, [settings.lang, settings.darkMode]);
+
+  const shareActive = useCallback(async () => {
     if (!active) return;
     const title = lang === "RU" ? active.titleRU : active.titleKZ;
     const text = lang === "RU" ? active.subtitleRU : active.subtitleKZ;
@@ -277,27 +395,70 @@ export default function NewsHomeScreen() {
       await Share.share({
         message: `${title}\n\n${text}${active.url ? `\n\n${active.url}` : ""}`,
       });
-    } catch {
-      // молча
-    }
-  };
+    } catch {}
+  }, [active, lang]);
 
-  const openSource = async () => {
+  const openSource = useCallback(async () => {
     if (!active?.url) return;
     try {
       await Linking.openURL(active.url);
-    } catch {
-      // молча
-    }
-  };
+    } catch {}
+  }, [active]);
 
   // авто-сбрасываем “ещё” если фильтр/поиск сузили список
   useEffect(() => {
     if (visibleCount > filtered.length) setVisibleCount(Math.min(6, filtered.length));
   }, [filtered.length, visibleCount]);
 
+  const hydrate = useCallback(async () => {
+    try {
+      const [settingsRaw, favRaw] = await Promise.all([
+        AsyncStorage.getItem(KEY_PROFILE_SETTINGS),
+        AsyncStorage.getItem(KEY_FAVORITES),
+      ]);
+
+      if (settingsRaw) {
+        const s = JSON.parse(settingsRaw) as Partial<Settings>;
+        setSettings((p) => ({
+          lang: (s.lang ?? p.lang) as Lang,
+          darkMode: typeof s.darkMode === "boolean" ? s.darkMode : p.darkMode,
+        }));
+      }
+
+      if (favRaw) {
+        const map = JSON.parse(favRaw) as Record<string, boolean>;
+        setBookmarks(map ?? {});
+      } else {
+        setBookmarks({});
+      }
+    } catch {
+      // молча
+    }
+  }, []);
+
+  useEffect(() => {
+    hydrate();
+    return () => {
+      try {
+        if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+      } catch {}
+    };
+  }, [hydrate]);
+
+  // Если избранное меняли в другом экране — подхватим на фокусе
+  useFocusEffect(
+    useCallback(() => {
+      hydrate();
+    }, [hydrate])
+  );
+
+  const heroGradient = useMemo(() => {
+    if (!theme.dark) return ["#0B1E5B", "#1B2C63", theme.bg] as const;
+    return ["#0B1E5B", "#0F172A", theme.bg] as const;
+  }, [theme.bg, theme.dark]);
+
   return (
-    <Screen style={styles.screen}>
+    <Screen style={[styles.screen, { backgroundColor: theme.bg }]}>
       <ScrollView
         contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + 6 }]}
         showsVerticalScrollIndicator={false}
@@ -305,66 +466,66 @@ export default function NewsHomeScreen() {
       >
         {/* Hero / Header */}
         <LinearGradient
-          colors={["#0B1E5B", "#1B2C63", "#FFFFFF"]}
+          colors={heroGradient as any}
           locations={[0, 0.55, 1]}
-          style={styles.hero}
+          style={[styles.hero, { borderColor: theme.border }]}
         >
           <View style={styles.header}>
             <Image source={LOGO} style={styles.logo} />
 
             <View style={styles.headerRight}>
-              <Pressable style={styles.pill} onPress={toggleLang}>
-                <Text style={styles.pillText}>{lang}</Text>
-                <Ionicons name="chevron-down" size={16} color={colors.muted} />
+              <Pressable style={[styles.pill, { borderColor: theme.border, backgroundColor: theme.card }]} onPress={toggleLang}>
+                <Text style={[styles.pillText, { color: theme.text }]}>{lang}</Text>
+                <Ionicons name="chevron-down" size={16} color={theme.muted} />
               </Pressable>
 
               <Pressable
-                style={styles.iconBtn}
+                style={[styles.iconBtn, { borderColor: theme.border, backgroundColor: theme.card }]}
                 onPress={() => {
                   LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
                   setSearchOpen((v) => !v);
                   setQuery("");
                 }}
               >
-                <Ionicons name={searchOpen ? "close" : "search-outline"} size={22} color={colors.text} />
+                <Ionicons name={searchOpen ? "close" : "search-outline"} size={22} color={theme.text} />
               </Pressable>
 
-              <Pressable style={styles.iconBtn} onPress={() => {}}>
-                <Ionicons name="notifications-outline" size={22} color={colors.text} />
+              <Pressable style={[styles.iconBtn, { borderColor: theme.border, backgroundColor: theme.card }]} onPress={() => {}}>
+                <Ionicons name="notifications-outline" size={22} color={theme.text} />
               </Pressable>
             </View>
           </View>
 
           <View style={styles.heroRow}>
-            <View style={styles.heroCard}>
-              <Text style={styles.heroBig}>{filtered.length}</Text>
-              <Text style={styles.heroSmall}>{t(lang, "материалов", "материал")}</Text>
+            <View style={[styles.heroCard, { borderColor: theme.border, backgroundColor: theme.card }]}>
+              <Text style={[styles.heroBig, { color: theme.text }]}>{filtered.length}</Text>
+              <Text style={[styles.heroSmall, { color: theme.muted }]}>{t(lang, "материалов", "материал")}</Text>
             </View>
-            <View style={styles.heroCard}>
-              <Text style={styles.heroBig}>{bookmarkCount}</Text>
-              <Text style={styles.heroSmall}>{t(lang, "в избранном", "таңдаулыда")}</Text>
+            <View style={[styles.heroCard, { borderColor: theme.border, backgroundColor: theme.card }]}>
+              <Text style={[styles.heroBig, { color: theme.text }]}>{bookmarkCount}</Text>
+              <Text style={[styles.heroSmall, { color: theme.muted }]}>{t(lang, "в избранном", "таңдаулыда")}</Text>
             </View>
-            <View style={styles.heroCard}>
-              <Text style={styles.heroBig}>{Object.keys(read).length}</Text>
-              <Text style={styles.heroSmall}>{t(lang, "прочитано", "оқылды")}</Text>
+            <View style={[styles.heroCard, { borderColor: theme.border, backgroundColor: theme.card }]}>
+              <Text style={[styles.heroBig, { color: theme.text }]}>{Object.keys(read).length}</Text>
+              <Text style={[styles.heroSmall, { color: theme.muted }]}>{t(lang, "прочитано", "оқылды")}</Text>
             </View>
           </View>
 
           {searchOpen && (
-            <View style={styles.searchWrap}>
-              <Ionicons name="search-outline" size={18} color={colors.muted} />
+            <View style={[styles.searchWrap, { borderColor: theme.border, backgroundColor: theme.card }]}>
+              <Ionicons name="search-outline" size={18} color={theme.muted} />
               <TextInput
                 value={query}
                 onChangeText={setQuery}
                 placeholder={t(lang, "Поиск по новостям и статьям…", "Жаңалықтар мен мақалалардан іздеу…")}
-                placeholderTextColor="#9AA3AF"
-                style={styles.searchInput}
+                placeholderTextColor={theme.muted}
+                style={[styles.searchInput, { color: theme.text }]}
                 autoCorrect={false}
                 autoCapitalize="none"
               />
               {!!query && (
                 <Pressable onPress={() => setQuery("")} hitSlop={12}>
-                  <Ionicons name="close-circle" size={18} color={colors.muted} />
+                  <Ionicons name="close-circle" size={18} color={theme.muted} />
                 </Pressable>
               )}
             </View>
@@ -373,11 +534,11 @@ export default function NewsHomeScreen() {
 
         {/* Новости дня */}
         <View style={styles.sectionHead}>
-          <Text style={styles.sectionTitle}>{t(lang, "Новости дня", "Күн жаңалықтары")}</Text>
-          <Text style={styles.sectionHint}>{t(lang, "самое важное", "ең маңыздысы")}</Text>
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>{t(lang, "Новости дня", "Күн жаңалықтары")}</Text>
+          <Text style={[styles.sectionHint, { color: theme.muted }]}>{t(lang, "самое важное", "ең маңыздысы")}</Text>
         </View>
 
-        <View style={styles.cardList}>
+        <View style={[styles.cardList, { borderColor: theme.border, backgroundColor: theme.card }]}>
           {dayNews.map((n, idx) => {
             const title = lang === "RU" ? n.titleRU : n.titleKZ;
             const subtitle = lang === "RU" ? n.subtitleRU : n.subtitleKZ;
@@ -387,38 +548,46 @@ export default function NewsHomeScreen() {
             return (
               <Pressable
                 key={n.id}
-                style={[styles.newsRow, idx !== 0 && styles.newsRowDivider]}
+                style={[styles.newsRow, idx !== 0 && { borderTopWidth: 1, borderTopColor: theme.border }]}
                 onPress={() => openItem(n)}
               >
-                <View style={styles.thumb}>
+                <View style={[styles.thumb, { borderColor: theme.border, backgroundColor: theme.soft }]}>
                   <Ionicons name="flash-outline" size={18} color={colors.navy} />
                 </View>
 
                 <View style={{ flex: 1 }}>
                   <View style={styles.newsTopLine}>
-                    <Text style={styles.newsMeta}>
-                      {n.source} • {fmtDate(n.createdAtISO, lang)} • {n.minutes}{t(lang, " мин", " мин")}
+                    <Text style={[styles.newsMeta, { color: theme.muted }]}>
+                      {n.source} • {fmtDate(n.createdAtISO, lang)} • {n.minutes}
+                      {t(lang, " мин", " мин")}
                     </Text>
-                    {isRead && <Text style={styles.readBadge}>{t(lang, "прочитано", "оқылды")}</Text>}
+                    {isRead && (
+                      <Text style={[styles.readBadge, { backgroundColor: theme.badgeBg, color: theme.badgeText, borderColor: theme.border }]}>
+                        {t(lang, "прочитано", "оқылды")}
+                      </Text>
+                    )}
                   </View>
 
-                  <Text style={styles.newsTitle} numberOfLines={2}>
+                  <Text style={[styles.newsTitle, { color: theme.text }]} numberOfLines={2}>
                     {title}
                   </Text>
-                  <Text style={styles.newsSubtitle} numberOfLines={2}>
+                  <Text style={[styles.newsSubtitle, { color: theme.muted }]} numberOfLines={2}>
                     {subtitle}
                   </Text>
                 </View>
 
                 <Pressable
                   hitSlop={12}
-                  onPress={() => toggleBookmark(n.id)}
-                  style={styles.saveBtn}
+                  onPress={(e: any) => {
+                    e?.stopPropagation?.();
+                    toggleBookmark(n.id);
+                  }}
+                  style={[styles.saveBtn, { borderColor: theme.border, backgroundColor: theme.card }]}
                 >
                   <Ionicons
                     name={isSaved ? "bookmark" : "bookmark-outline"}
                     size={20}
-                    color={isSaved ? colors.navy : colors.muted}
+                    color={isSaved ? colors.navy : theme.muted}
                   />
                 </Pressable>
               </Pressable>
@@ -428,8 +597,8 @@ export default function NewsHomeScreen() {
 
         {/* Тренды */}
         <View style={[styles.sectionHead, { marginTop: 16 }]}>
-          <Text style={styles.sectionTitle}>{t(lang, "Тренды", "Трендтер")}</Text>
-          <Text style={styles.sectionHint}>{t(lang, "подборка", "іріктеу")}</Text>
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>{t(lang, "Тренды", "Трендтер")}</Text>
+          <Text style={[styles.sectionHint, { color: theme.muted }]}>{t(lang, "подборка", "іріктеу")}</Text>
         </View>
 
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 6 }}>
@@ -437,25 +606,36 @@ export default function NewsHomeScreen() {
             const title = lang === "RU" ? n.titleRU : n.titleKZ;
             const isSaved = !!bookmarks[n.id];
             return (
-              <Pressable key={n.id} style={styles.trendCard} onPress={() => openItem(n)}>
+              <Pressable
+                key={n.id}
+                style={[styles.trendCard, { borderColor: theme.border, backgroundColor: theme.card }]}
+                onPress={() => openItem(n)}
+              >
                 <View style={styles.trendTop}>
-                  <View style={styles.trendIcon}>
-                    <Ionicons name="trending-up-outline" size={18} color={colors.text} />
+                  <View style={[styles.trendIcon, { borderColor: theme.border, backgroundColor: theme.soft }]}>
+                    <Ionicons name="trending-up-outline" size={18} color={theme.text} />
                   </View>
-                  <Pressable hitSlop={12} onPress={() => toggleBookmark(n.id)}>
+                  <Pressable
+                    hitSlop={12}
+                    onPress={(e: any) => {
+                      e?.stopPropagation?.();
+                      toggleBookmark(n.id);
+                    }}
+                  >
                     <Ionicons
                       name={isSaved ? "bookmark" : "bookmark-outline"}
                       size={18}
-                      color={isSaved ? colors.navy : colors.muted}
+                      color={isSaved ? colors.navy : theme.muted}
                     />
                   </Pressable>
                 </View>
 
-                <Text style={styles.trendTitle} numberOfLines={3}>
+                <Text style={[styles.trendTitle, { color: theme.text }]} numberOfLines={3}>
                   {title}
                 </Text>
-                <Text style={styles.trendMeta}>
-                  {n.source} • {n.minutes}{t(lang, " мин", " мин")}
+                <Text style={[styles.trendMeta, { color: theme.muted }]}>
+                  {n.source} • {n.minutes}
+                  {t(lang, " мин", " мин")}
                 </Text>
               </Pressable>
             );
@@ -464,13 +644,13 @@ export default function NewsHomeScreen() {
 
         {/* Фильтры */}
         <View style={[styles.sectionHead, { marginTop: 16 }]}>
-          <Text style={styles.sectionTitle}>{t(lang, "Лента", "Лента")}</Text>
-          <Text style={styles.sectionHint}>{t(lang, "фильтры", "сүзгілер")}</Text>
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>{t(lang, "Лента", "Лента")}</Text>
+          <Text style={[styles.sectionHint, { color: theme.muted }]}>{t(lang, "фильтры", "сүзгілер")}</Text>
         </View>
 
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingVertical: 10 }}>
           {CHIPS.map((c) => {
-            const active = c.key === chip;
+            const activeChip = c.key === chip;
             const label = lang === "RU" ? c.labelRU : c.labelKZ;
             return (
               <Pressable
@@ -480,11 +660,13 @@ export default function NewsHomeScreen() {
                   setChip(c.key as ChipKey);
                   setVisibleCount(6);
                 }}
-                style={[styles.chip, active ? styles.chipActive : styles.chipInactive]}
+                style={[
+                  styles.chip,
+                  { borderColor: activeChip ? colors.navy : theme.border },
+                  { backgroundColor: activeChip ? colors.navy : theme.card },
+                ]}
               >
-                <Text style={[styles.chipText, active ? styles.chipTextActive : styles.chipTextInactive]}>
-                  {label}
-                </Text>
+                <Text style={[styles.chipText, { color: activeChip ? "#fff" : theme.text }]}>{label}</Text>
               </Pressable>
             );
           })}
@@ -492,10 +674,10 @@ export default function NewsHomeScreen() {
 
         {/* Список */}
         {list.length === 0 ? (
-          <View style={styles.empty}>
-            <Ionicons name="search-outline" size={26} color={colors.muted} />
-            <Text style={styles.emptyTitle}>{t(lang, "Ничего не найдено", "Ештеңе табылмады")}</Text>
-            <Text style={styles.emptySub}>
+          <View style={[styles.empty, { borderColor: theme.border, backgroundColor: theme.card }]}>
+            <Ionicons name="search-outline" size={26} color={theme.muted} />
+            <Text style={[styles.emptyTitle, { color: theme.text }]}>{t(lang, "Ничего не найдено", "Ештеңе табылмады")}</Text>
+            <Text style={[styles.emptySub, { color: theme.muted }]}>
               {t(lang, "Попробуй другой запрос или сними фильтр.", "Басқа сұрау жазып көр немесе сүзгіні алып таста.")}
             </Text>
           </View>
@@ -508,8 +690,12 @@ export default function NewsHomeScreen() {
               const isRead = !!read[n.id];
 
               return (
-                <Pressable key={n.id} style={styles.feedRow} onPress={() => openItem(n)}>
-                  <View style={styles.feedThumb}>
+                <Pressable
+                  key={n.id}
+                  style={[styles.feedRow, { borderColor: theme.border, backgroundColor: theme.card }]}
+                  onPress={() => openItem(n)}
+                >
+                  <View style={[styles.feedThumb, { borderColor: theme.border, backgroundColor: theme.soft }]}>
                     <Ionicons
                       name={
                         n.category === "law"
@@ -521,41 +707,52 @@ export default function NewsHomeScreen() {
                               : "briefcase-outline"
                       }
                       size={18}
-                      color={colors.text}
+                      color={theme.text}
                     />
                   </View>
 
                   <View style={{ flex: 1 }}>
                     <View style={styles.newsTopLine}>
-                      <Text style={styles.newsMeta}>
-                        {n.source} • {fmtDate(n.createdAtISO, lang)} • {n.minutes}{t(lang, " мин", " мин")}
+                      <Text style={[styles.newsMeta, { color: theme.muted }]}>
+                        {n.source} • {fmtDate(n.createdAtISO, lang)} • {n.minutes}
+                        {t(lang, " мин", " мин")}
                       </Text>
-                      {isRead && <Text style={styles.readBadge}>{t(lang, "прочитано", "оқылды")}</Text>}
+                      {isRead && (
+                        <Text style={[styles.readBadge, { backgroundColor: theme.badgeBg, color: theme.badgeText, borderColor: theme.border }]}>
+                          {t(lang, "прочитано", "оқылды")}
+                        </Text>
+                      )}
                     </View>
 
-                    <Text style={styles.feedTitle} numberOfLines={2}>
+                    <Text style={[styles.feedTitle, { color: theme.text }]} numberOfLines={2}>
                       {title}
                     </Text>
-                    <Text style={styles.feedSub} numberOfLines={2}>
+                    <Text style={[styles.feedSub, { color: theme.muted }]} numberOfLines={2}>
                       {subtitle}
                     </Text>
 
                     <View style={styles.feedActions}>
-                      <Pressable onPress={() => toggleBookmark(n.id)} style={styles.actionBtn}>
+                      <Pressable
+                        onPress={(e: any) => {
+                          e?.stopPropagation?.();
+                          toggleBookmark(n.id);
+                        }}
+                        style={[styles.actionBtn, { borderColor: theme.border, backgroundColor: theme.card }]}
+                      >
                         <Ionicons
                           name={isSaved ? "bookmark" : "bookmark-outline"}
                           size={16}
-                          color={isSaved ? colors.navy : colors.muted}
+                          color={isSaved ? colors.navy : theme.muted}
                         />
-                        <Text style={styles.actionText}>
+                        <Text style={[styles.actionText, { color: theme.text }]}>
                           {isSaved ? t(lang, "Сохранено", "Сақталды") : t(lang, "В избранное", "Таңдаулыға")}
                         </Text>
                       </Pressable>
 
-                      <View style={styles.dot} />
+                      <View style={[styles.dot, { backgroundColor: theme.border }]} />
 
-                      <Text style={styles.actionHint}>
-                        {t(lang, "Нажми, чтобы читать", "Оқу үшін бас") }
+                      <Text style={[styles.actionHint, { color: theme.muted }]}>
+                        {t(lang, "Нажми, чтобы читать", "Оқу үшін бас")}
                       </Text>
                     </View>
                   </View>
@@ -567,7 +764,7 @@ export default function NewsHomeScreen() {
 
         {/* Load more */}
         {filtered.length > visibleCount && (
-          <Pressable style={styles.primaryBtn} onPress={loadMore}>
+          <Pressable style={[styles.primaryBtn, { backgroundColor: colors.navy }]} onPress={loadMore}>
             <Text style={styles.primaryBtnText}>
               {t(lang, "Еще", "Тағы")} {Math.min(8, filtered.length - visibleCount)} {t(lang, "материалов", "материал")}
             </Text>
@@ -584,56 +781,56 @@ export default function NewsHomeScreen() {
         onRequestClose={() => setActive(null)}
         presentationStyle="pageSheet"
       >
-        <View style={[styles.modalWrap, { paddingTop: insets.top + 10 }]}>
+        <View style={[styles.modalWrap, { paddingTop: insets.top + 10, backgroundColor: theme.bg }]}>
           <View style={styles.modalHeader}>
-            <Pressable style={styles.modalIconBtn} onPress={() => setActive(null)}>
-              <Ionicons name="chevron-down" size={24} color={colors.text} />
+            <Pressable style={[styles.modalIconBtn, { borderColor: theme.border, backgroundColor: theme.card }]} onPress={() => setActive(null)}>
+              <Ionicons name="chevron-down" size={24} color={theme.text} />
             </Pressable>
 
-            <Text style={styles.modalHeaderTitle} numberOfLines={1}>
+            <Text style={[styles.modalHeaderTitle, { color: theme.text }]} numberOfLines={1}>
               {t(lang, "Материал", "Материал")}
             </Text>
 
-            <Pressable style={styles.modalIconBtn} onPress={shareActive}>
-              <Ionicons name="share-outline" size={22} color={colors.text} />
+            <Pressable style={[styles.modalIconBtn, { borderColor: theme.border, backgroundColor: theme.card }]} onPress={shareActive}>
+              <Ionicons name="share-outline" size={22} color={theme.text} />
             </Pressable>
           </View>
 
           <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 28 }}>
             {active && (
               <>
-                <Text style={styles.modalTitle}>
+                <Text style={[styles.modalTitle, { color: theme.text }]}>
                   {lang === "RU" ? active.titleRU : active.titleKZ}
                 </Text>
 
-                <Text style={styles.modalMeta}>
+                <Text style={[styles.modalMeta, { color: theme.muted }]}>
                   {active.source} • {fmtDate(active.createdAtISO, lang)} • {active.minutes}
                   {t(lang, " мин чтения", " мин оқу")}
                 </Text>
 
-                <View style={styles.modalDivider} />
+                <View style={[styles.modalDivider, { backgroundColor: theme.border }]} />
 
-                <Text style={styles.modalBody}>
+                <Text style={[styles.modalBody, { color: theme.text }]}>
                   {lang === "RU" ? active.bodyRU : active.bodyKZ}
                 </Text>
 
                 {!!active.url && (
-                  <Pressable style={styles.openBtn} onPress={openSource}>
+                  <Pressable style={[styles.openBtn, { backgroundColor: colors.navy }]} onPress={openSource}>
                     <Ionicons name="open-outline" size={18} color="#fff" />
                     <Text style={styles.openBtnText}>{t(lang, "Открыть источник", "Дереккөзді ашу")}</Text>
                   </Pressable>
                 )}
 
                 <Pressable
-                  style={styles.secondaryBtn}
+                  style={[styles.secondaryBtn, { borderColor: theme.border, backgroundColor: theme.card }]}
                   onPress={() => toggleBookmark(active.id)}
                 >
                   <Ionicons
                     name={bookmarks[active.id] ? "bookmark" : "bookmark-outline"}
                     size={18}
-                    color={colors.text}
+                    color={theme.text}
                   />
-                  <Text style={styles.secondaryBtnText}>
+                  <Text style={[styles.secondaryBtnText, { color: theme.text }]}>
                     {bookmarks[active.id]
                       ? t(lang, "Убрать из избранного", "Таңдаулыдан алып тастау")
                       : t(lang, "Добавить в избранное", "Таңдаулыға қосу")}
@@ -660,7 +857,6 @@ const styles = StyleSheet.create({
     borderRadius: 22,
     padding: 14,
     borderWidth: 1,
-    borderColor: colors.border,
     marginBottom: 12,
     overflow: "hidden",
   },
@@ -682,107 +878,87 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.white,
   },
-  pillText: { color: colors.text, fontWeight: "800", fontSize: 12 },
+  pillText: { fontWeight: "800", fontSize: 12 },
 
   iconBtn: {
     width: 40,
     height: 40,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: colors.border,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: colors.white,
   },
 
   heroRow: { flexDirection: "row", gap: 10, marginTop: 4 },
   heroCard: {
     flex: 1,
-    backgroundColor: "#FFFFFF",
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: colors.border,
     padding: 12,
   },
-  heroBig: { fontSize: 18, fontWeight: "900", color: colors.text },
-  heroSmall: { marginTop: 4, fontSize: 11, color: colors.muted, fontWeight: "700" },
+  heroBig: { fontSize: 18, fontWeight: "900" },
+  heroSmall: { marginTop: 4, fontSize: 11, fontWeight: "700" },
 
   searchWrap: {
     marginTop: 12,
     height: 46,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.white,
     paddingHorizontal: 12,
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
   },
-  searchInput: { flex: 1, height: "100%", fontSize: 14, color: colors.text },
+  searchInput: { flex: 1, height: "100%", fontSize: 14 },
 
   sectionHead: { marginTop: 8, flexDirection: "row", alignItems: "baseline", gap: 8 },
-  sectionTitle: { fontSize: 18, fontWeight: "900", color: colors.text },
-  sectionHint: { fontSize: 12, fontWeight: "800", color: colors.muted },
+  sectionTitle: { fontSize: 18, fontWeight: "900" },
+  sectionHint: { fontSize: 12, fontWeight: "800" },
 
   cardList: {
     marginTop: 10,
     borderWidth: 1,
-    borderColor: colors.border,
     borderRadius: 18,
     overflow: "hidden",
-    backgroundColor: colors.white,
   },
   newsRow: { flexDirection: "row", gap: 12, padding: 14, alignItems: "center" },
-  newsRowDivider: { borderTopWidth: 1, borderTopColor: colors.border },
   thumb: {
     width: 54,
     height: 44,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: "#F7F7F9",
     alignItems: "center",
     justifyContent: "center",
   },
 
   newsTopLine: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 },
-  newsMeta: { fontSize: 11, color: colors.muted, fontWeight: "700" },
+  newsMeta: { fontSize: 11, fontWeight: "700" },
   readBadge: {
     fontSize: 11,
-    color: colors.navy,
     fontWeight: "900",
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 999,
-    backgroundColor: "#F5F7FF",
     borderWidth: 1,
-    borderColor: colors.border,
   },
 
-  newsTitle: { fontSize: 14, fontWeight: "900", color: colors.text, marginTop: 6 },
-  newsSubtitle: { fontSize: 12, color: colors.muted, marginTop: 4 },
+  newsTitle: { fontSize: 14, fontWeight: "900", marginTop: 6 },
+  newsSubtitle: { fontSize: 12, marginTop: 4 },
 
   saveBtn: {
     width: 34,
     height: 34,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: colors.border,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: colors.white,
   },
 
   trendCard: {
     width: 190,
     borderRadius: 18,
     borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.white,
     padding: 12,
     marginRight: 10,
   },
@@ -792,18 +968,15 @@ const styles = StyleSheet.create({
     height: 34,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: "#F7F7F9",
     alignItems: "center",
     justifyContent: "center",
   },
-  trendTitle: { marginTop: 10, fontSize: 13, fontWeight: "900", color: colors.text, lineHeight: 18 },
-  trendMeta: { marginTop: 8, fontSize: 11, color: colors.muted, fontWeight: "700" },
+  trendTitle: { marginTop: 10, fontSize: 13, fontWeight: "900", lineHeight: 18 },
+  trendMeta: { marginTop: 8, fontSize: 11, fontWeight: "700" },
 
   primaryBtn: {
     height: 46,
     borderRadius: 14,
-    backgroundColor: colors.navy,
     alignItems: "center",
     justifyContent: "center",
     marginTop: 12,
@@ -817,11 +990,7 @@ const styles = StyleSheet.create({
     marginRight: 8,
     borderWidth: 1,
   },
-  chipActive: { backgroundColor: colors.navy, borderColor: colors.navy },
-  chipInactive: { backgroundColor: colors.white, borderColor: colors.border },
   chipText: { fontSize: 12, fontWeight: "900" },
-  chipTextActive: { color: "#fff" },
-  chipTextInactive: { color: colors.text },
 
   feed: { marginTop: 6 },
   feedRow: {
@@ -829,9 +998,7 @@ const styles = StyleSheet.create({
     gap: 12,
     padding: 12,
     borderWidth: 1,
-    borderColor: colors.border,
     borderRadius: 18,
-    backgroundColor: colors.white,
     marginBottom: 10,
   },
   feedThumb: {
@@ -839,34 +1006,38 @@ const styles = StyleSheet.create({
     height: 46,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: "#F7F7F9",
     alignItems: "center",
     justifyContent: "center",
   },
-  feedTitle: { marginTop: 6, fontSize: 14, fontWeight: "900", color: colors.text },
-  feedSub: { marginTop: 4, fontSize: 12, color: colors.muted },
+  feedTitle: { marginTop: 6, fontSize: 14, fontWeight: "900" },
+  feedSub: { marginTop: 4, fontSize: 12 },
 
   feedActions: { marginTop: 10, flexDirection: "row", alignItems: "center", flexWrap: "wrap" },
-  actionBtn: { flexDirection: "row", alignItems: "center", gap: 6, paddingVertical: 4, paddingHorizontal: 8, borderRadius: 999, borderWidth: 1, borderColor: colors.border },
-  actionText: { fontSize: 11, fontWeight: "900", color: colors.text },
-  dot: { width: 4, height: 4, borderRadius: 2, backgroundColor: colors.border, marginHorizontal: 10 },
-  actionHint: { fontSize: 11, fontWeight: "800", color: colors.muted },
+  actionBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    borderRadius: 999,
+    borderWidth: 1,
+  },
+  actionText: { fontSize: 11, fontWeight: "900" },
+  dot: { width: 4, height: 4, borderRadius: 2, marginHorizontal: 10 },
+  actionHint: { fontSize: 11, fontWeight: "800" },
 
   empty: {
     marginTop: 14,
     borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.white,
     borderRadius: 18,
     padding: 18,
     alignItems: "center",
   },
-  emptyTitle: { marginTop: 10, fontSize: 14, fontWeight: "900", color: colors.text },
-  emptySub: { marginTop: 6, fontSize: 12, color: colors.muted, textAlign: "center", lineHeight: 18 },
+  emptyTitle: { marginTop: 10, fontSize: 14, fontWeight: "900" },
+  emptySub: { marginTop: 6, fontSize: 12, textAlign: "center", lineHeight: 18 },
 
   // Modal
-  modalWrap: { flex: 1, backgroundColor: colors.white, paddingHorizontal: 16 },
+  modalWrap: { flex: 1, paddingHorizontal: 16 },
   modalHeader: {
     flexDirection: "row",
     alignItems: "center",
@@ -878,23 +1049,20 @@ const styles = StyleSheet.create({
     height: 44,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.white,
     alignItems: "center",
     justifyContent: "center",
   },
-  modalHeaderTitle: { flex: 1, textAlign: "center", fontSize: 14, fontWeight: "900", color: colors.text },
+  modalHeaderTitle: { flex: 1, textAlign: "center", fontSize: 14, fontWeight: "900" },
 
-  modalTitle: { marginTop: 10, fontSize: 22, fontWeight: "900", color: colors.text, lineHeight: 28 },
-  modalMeta: { marginTop: 10, fontSize: 12, color: colors.muted, fontWeight: "700" },
-  modalDivider: { marginTop: 14, height: 1, backgroundColor: colors.border },
-  modalBody: { marginTop: 14, fontSize: 14, color: colors.text, lineHeight: 20 },
+  modalTitle: { marginTop: 10, fontSize: 22, fontWeight: "900", lineHeight: 28 },
+  modalMeta: { marginTop: 10, fontSize: 12, fontWeight: "700" },
+  modalDivider: { marginTop: 14, height: 1 },
+  modalBody: { marginTop: 14, fontSize: 14, lineHeight: 20 },
 
   openBtn: {
     marginTop: 18,
     height: 48,
     borderRadius: 16,
-    backgroundColor: colors.navy,
     alignItems: "center",
     justifyContent: "center",
     flexDirection: "row",
@@ -907,12 +1075,10 @@ const styles = StyleSheet.create({
     height: 48,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.white,
     alignItems: "center",
     justifyContent: "center",
     flexDirection: "row",
     gap: 10,
   },
-  secondaryBtnText: { color: colors.text, fontWeight: "900", fontSize: 14 },
+  secondaryBtnText: { fontWeight: "900", fontSize: 14 },
 });

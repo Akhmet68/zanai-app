@@ -29,13 +29,13 @@ function joinPath(dir: string, file: string) {
   return `${d}${file}`;
 }
 
-async function ensureFileUri(uri: string, fileName: string) {
+async function ensureFileUri(uri: string, fileName: string): Promise<{ fileUri: string; shouldCleanup: boolean }> {
   const isWeird =
     uri.startsWith("content://") ||
     uri.startsWith("ph://") ||
     uri.startsWith("assets-library://");
 
-  if (!isWeird) return uri;
+  if (!isWeird) return { fileUri: uri, shouldCleanup: false };
 
   const baseDir = getWritableDir();
   if (!baseDir) throw new Error("Нет доступной директории для временных файлов (expo-file-system).");
@@ -43,7 +43,8 @@ async function ensureFileUri(uri: string, fileName: string) {
   const dest = joinPath(baseDir, `${Date.now()}_${safeName(fileName)}`);
 
   await FS.copyAsync({ from: uri, to: dest });
-  return dest;
+
+  return { fileUri: dest, shouldCleanup: true };
 }
 
 async function uriToBlob(uri: string): Promise<Blob> {
@@ -70,20 +71,34 @@ export async function uploadUriToStorage(params: {
   const baseName = params.fileName ? safeName(params.fileName) : `file_${Date.now()}${ext}`;
   const path = `users/${uid}/${folder}/${Date.now()}_${baseName}`;
 
-  const fileUri = await ensureFileUri(params.uri, baseName);
+  const { fileUri, shouldCleanup } = await ensureFileUri(params.uri, baseName);
 
-  const blob = await uriToBlob(fileUri);
+  let blob: Blob | null = null;
 
-  const r = ref(storage, path);
-  await uploadBytes(r, blob, params.contentType ? { contentType: params.contentType } : undefined);
-
-  const url = await getDownloadURL(r);
-
-  let size: number | undefined;
   try {
-    const info: any = await FS.getInfoAsync(fileUri);
-    if (info?.exists && typeof info?.size === "number") size = info.size;
-  } catch {}
+    blob = await uriToBlob(fileUri);
 
-  return { url, path, name: baseName, size };
+    const r = ref(storage, path);
+    await uploadBytes(r, blob, params.contentType ? { contentType: params.contentType } : undefined);
+
+    const url = await getDownloadURL(r);
+
+    let size: number | undefined;
+    try {
+      const info: any = await FS.getInfoAsync(fileUri);
+      if (info?.exists && typeof info?.size === "number") size = info.size;
+    } catch {}
+
+    return { url, path, name: baseName, size };
+  } finally {
+    try {
+      (blob as any)?.close?.();
+    } catch {}
+
+    if (shouldCleanup) {
+      try {
+        await FS.deleteAsync(fileUri, { idempotent: true });
+      } catch {}
+    }
+  }
 }

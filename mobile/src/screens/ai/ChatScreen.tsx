@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -18,6 +18,7 @@ import {
   UIManager,
   NativeScrollEvent,
   NativeSyntheticEvent,
+  InteractionManager,
 } from "react-native";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import * as ImagePicker from "expo-image-picker";
@@ -183,9 +184,7 @@ function ImagePreviewModal({
           <Ionicons name="close" size={26} color="#fff" />
         </Pressable>
 
-        {uri ? (
-          <Image source={{ uri }} style={styles.imgModalImage} resizeMode="contain" />
-        ) : null}
+        {uri ? <Image source={{ uri }} style={styles.imgModalImage} resizeMode="contain" /> : null}
       </View>
     </Modal>
   );
@@ -219,7 +218,9 @@ function Bubble({
           <Image source={{ uri: m.url }} style={styles.imageMsg} />
         </Pressable>
         {!!m.text ? <Text style={[textStyle, { marginTop: 8 }]}>{m.text}</Text> : null}
-        {!!timeLabel ? <Text style={[styles.timeText, isUser && { color: "rgba(255,255,255,0.65)" }]}>{timeLabel}</Text> : null}
+        {!!timeLabel ? (
+          <Text style={[styles.timeText, isUser && { color: "rgba(255,255,255,0.65)" }]}>{timeLabel}</Text>
+        ) : null}
       </View>
     );
   }
@@ -242,7 +243,9 @@ function Bubble({
           </View>
           <Ionicons name="open-outline" size={18} color={isUser ? "#fff" : colors.muted} />
         </View>
-        {!!timeLabel ? <Text style={[styles.timeText, isUser && { color: "rgba(255,255,255,0.65)" }]}>{timeLabel}</Text> : null}
+        {!!timeLabel ? (
+          <Text style={[styles.timeText, isUser && { color: "rgba(255,255,255,0.65)" }]}>{timeLabel}</Text>
+        ) : null}
       </Pressable>
     );
   }
@@ -279,7 +282,9 @@ function Bubble({
           <Ionicons name="chevron-forward" size={18} color={isUser ? "#fff" : colors.muted} />
         </View>
 
-        {!!timeLabel ? <Text style={[styles.timeText, isUser && { color: "rgba(255,255,255,0.65)" }]}>{timeLabel}</Text> : null}
+        {!!timeLabel ? (
+          <Text style={[styles.timeText, isUser && { color: "rgba(255,255,255,0.65)" }]}>{timeLabel}</Text>
+        ) : null}
       </Pressable>
     );
   }
@@ -287,7 +292,9 @@ function Bubble({
   return (
     <View style={bubbleStyle}>
       <Text style={textStyle}>{m.text ?? ""}</Text>
-      {!!timeLabel ? <Text style={[styles.timeText, isUser && { color: "rgba(255,255,255,0.65)" }]}>{timeLabel}</Text> : null}
+      {!!timeLabel ? (
+        <Text style={[styles.timeText, isUser && { color: "rgba(255,255,255,0.65)" }]}>{timeLabel}</Text>
+      ) : null}
     </View>
   );
 }
@@ -321,12 +328,17 @@ export default function ChatScreen() {
     durationMs: 0,
   });
 
+  // Throttle audio UI updates (perf)
+  const lastAudioUiCommitRef = useRef(0);
+  const pendingAudioUiRef = useRef<typeof audioUi | null>(null);
+  const rafRef = useRef<number | null>(null);
+
   // Scroll helpers
   const listRef = useRef<FlatList<ChatMessage>>(null);
   const [showScrollDown, setShowScrollDown] = useState(false);
   const isNearBottomRef = useRef(true);
 
-  // Keep latest messages in ref (чтобы не ловить stale state)
+  // Keep latest messages in ref
   const messagesRef = useRef<ChatMessage[]>([]);
   useEffect(() => {
     messagesRef.current = messages;
@@ -354,6 +366,9 @@ export default function ChatScreen() {
       try {
         if (recordTimerRef.current) clearInterval(recordTimerRef.current);
       } catch {}
+      try {
+        if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      } catch {}
     };
   }, []);
 
@@ -362,7 +377,6 @@ export default function ChatScreen() {
   };
 
   useEffect(() => {
-    // Автоскролл только если пользователь около низа
     if (isNearBottomRef.current) scrollToEnd(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messages.length]);
@@ -372,7 +386,6 @@ export default function ChatScreen() {
   };
 
   const toAiPayload = (arr: ChatMessage[]) => {
-    // Контекст: последние 14 сообщений
     const slice = arr.slice(-14);
     return slice.map((m) => {
       if (m.type === "text") return { role: m.role as "user" | "assistant", content: m.text ?? "" };
@@ -381,16 +394,10 @@ export default function ChatScreen() {
         return { role: m.role as "user" | "assistant", content: `[image] ${m.url ?? ""}${cap}` };
       }
       if (m.type === "file") {
-        return {
-          role: m.role as "user" | "assistant",
-          content: `[file] ${m.name ?? "file"} (${m.mime ?? ""}) ${m.url ?? ""}`,
-        };
+        return { role: m.role as "user" | "assistant", content: `[file] ${m.name ?? "file"} (${m.mime ?? ""}) ${m.url ?? ""}` };
       }
       if (m.type === "audio") {
-        return {
-          role: m.role as "user" | "assistant",
-          content: `[audio] ${msToTime(m.durationMs)} ${m.url ?? ""}`,
-        };
+        return { role: m.role as "user" | "assistant", content: `[audio] ${msToTime(m.durationMs)} ${m.url ?? ""}` };
       }
       return { role: m.role as "user" | "assistant", content: m.text ?? "" };
     });
@@ -430,7 +437,6 @@ export default function ChatScreen() {
     Keyboard.dismiss();
     setInput("");
 
-    // Guest/local mode
     if (!user?.uid) {
       const localUserMsg: ChatMessage = {
         id: String(Date.now()) + Math.random(),
@@ -447,61 +453,32 @@ export default function ChatScreen() {
       return;
     }
 
-    // Authed (Firestore)
     await fbSendMessage(user.uid, { role: "user", type: "text", text: trimmed });
 
-    const draft: ChatMessage = {
-      id: "__draft__",
-      role: "user",
-      type: "text",
-      text: trimmed,
-    };
+    const draft: ChatMessage = { id: "__draft__", role: "user", type: "text", text: trimmed };
     const ctx = [...messagesRef.current, draft];
 
     await askAiAndRespond(ctx, trimmed);
   };
 
+  // ---------- iOS FIX: close sheet before native picker ----------
+  const closeSheetBeforeNativePicker = useCallback(async () => {
+    setPlusOpen(false);
+
+    if (Platform.OS === "ios") {
+      await new Promise<void>((resolve) => {
+        InteractionManager.runAfterInteractions(() => {
+          setTimeout(resolve, 80);
+        });
+      });
+    }
+  }, []);
+
   // ---------- Attachments ----------
-  const pickFromGallery = async () => {
-    setPlusOpen(false);
-
-    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (perm.status !== "granted") return Alert.alert("Доступ", "Нужен доступ к галерее.");
-
-    const res = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      quality: 0.92,
-    });
-
-    if (res.canceled || !res.assets?.[0]?.uri) return;
-
-    const asset = res.assets[0];
-    await sendImage(asset.uri, asset.fileName ?? `photo_${Date.now()}.jpg`, asset.mimeType ?? "image/jpeg");
-  };
-
-  const takePhoto = async () => {
-    setPlusOpen(false);
-
-    const perm = await ImagePicker.requestCameraPermissionsAsync();
-    if (perm.status !== "granted") return Alert.alert("Доступ", "Нужен доступ к камере.");
-
-    const res = await ImagePicker.launchCameraAsync({
-      allowsEditing: true,
-      quality: 0.92,
-    });
-
-    if (res.canceled || !res.assets?.[0]?.uri) return;
-
-    const asset = res.assets[0];
-    await sendImage(asset.uri, asset.fileName ?? `camera_${Date.now()}.jpg`, asset.mimeType ?? "image/jpeg");
-  };
-
   const sendImage = async (uri: string, name: string, mime: string) => {
     if (sendingAttachment) return;
 
     if (!user?.uid) {
-      // guest: no upload
       sendLocal({ role: "user", type: "image", url: uri, name, mime });
       return;
     }
@@ -532,28 +509,75 @@ export default function ChatScreen() {
     }
   };
 
-  const pickDocument = async () => {
-    setPlusOpen(false);
-
-    const res = await DocumentPicker.getDocumentAsync({
-      multiple: false,
-      copyToCacheDirectory: true,
-    });
-
-    if (res.canceled) return;
-
-    const a = res.assets?.[0];
-    if (!a?.uri) return;
-
-    const name = a.name ?? `file_${Date.now()}`;
-    const mime = a.mimeType ?? "application/octet-stream";
-
-    if (!user?.uid) {
-      sendLocal({ role: "user", type: "file", url: a.uri, name, mime, size: a.size });
-      return;
-    }
-
+  const pickFromGallery = async () => {
     try {
+      await closeSheetBeforeNativePicker();
+
+      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (perm.status !== "granted") {
+        return Alert.alert("Доступ", "Разреши доступ к Фото в настройках iOS (для Expo Go).");
+      }
+
+      const res = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        quality: 0.92,
+      });
+
+      if (res.canceled || !res.assets?.[0]?.uri) return;
+
+      const asset = res.assets[0];
+      await sendImage(asset.uri, asset.fileName ?? `photo_${Date.now()}.jpg`, asset.mimeType ?? "image/jpeg");
+    } catch (e: any) {
+      Alert.alert("Ошибка", e?.message ?? "Не удалось открыть галерею.");
+    }
+  };
+
+  const takePhoto = async () => {
+    try {
+      await closeSheetBeforeNativePicker();
+
+      const perm = await ImagePicker.requestCameraPermissionsAsync();
+      if (perm.status !== "granted") {
+        return Alert.alert("Доступ", "Разреши доступ к Камере в настройках iOS (для Expo Go).");
+      }
+
+      const res = await ImagePicker.launchCameraAsync({
+        allowsEditing: true,
+        quality: 0.92,
+      });
+
+      if (res.canceled || !res.assets?.[0]?.uri) return;
+
+      const asset = res.assets[0];
+      await sendImage(asset.uri, asset.fileName ?? `camera_${Date.now()}.jpg`, asset.mimeType ?? "image/jpeg");
+    } catch (e: any) {
+      Alert.alert("Ошибка", e?.message ?? "Не удалось открыть камеру.");
+    }
+  };
+
+  const pickDocument = async () => {
+    try {
+      await closeSheetBeforeNativePicker();
+
+      const res = await DocumentPicker.getDocumentAsync({
+        multiple: false,
+        copyToCacheDirectory: true,
+      });
+
+      if (res.canceled) return;
+
+      const a = res.assets?.[0];
+      if (!a?.uri) return;
+
+      const name = a.name ?? `file_${Date.now()}`;
+      const mime = a.mimeType ?? "application/octet-stream";
+
+      if (!user?.uid) {
+        sendLocal({ role: "user", type: "file", url: a.uri, name, mime, size: a.size });
+        return;
+      }
+
       setSendingAttachment(true);
 
       const up = await uploadUriToStorage({
@@ -573,7 +597,7 @@ export default function ChatScreen() {
         size: a.size ?? up.size,
       });
     } catch (e: any) {
-      Alert.alert("Ошибка", e?.message ?? "Не удалось отправить документ.");
+      Alert.alert("Ошибка", e?.message ?? "Не удалось выбрать документ.");
     } finally {
       setSendingAttachment(false);
     }
@@ -599,13 +623,23 @@ export default function ChatScreen() {
     ]);
   };
 
-  // ---------- Voice ----------
+  // ---------- Voice (iOS safe) ----------
   const startRecording = async () => {
-    if (sendingAttachment || aiThinking) return;
+    if (sendingAttachment) return;
 
     try {
+      // stop any playing sound (iOS recording often conflicts)
+      if (soundRef.current) {
+        try {
+          await soundRef.current.unloadAsync();
+        } catch {}
+        soundRef.current = null;
+
+        setAudioUi((p) => ({ ...p, playingId: null, isPlaying: false, positionMs: 0, durationMs: 0 }));
+      }
+
       const perm = await Audio.requestPermissionsAsync();
-      if (!perm.granted) return Alert.alert("Доступ", "Нужен доступ к микрофону.");
+      if (!perm.granted) return Alert.alert("Доступ", "Разреши микрофон в настройках iOS (для Expo Go).");
 
       await Audio.setAudioModeAsync({
         allowsRecordingIOS: true,
@@ -622,12 +656,12 @@ export default function ChatScreen() {
       if (recordTimerRef.current) clearInterval(recordTimerRef.current);
       recordTimerRef.current = setInterval(async () => {
         try {
-          const status: any = await rec.getStatusAsync();
-          if (status?.isRecording) setRecordingMs(status?.durationMillis ?? 0);
+          const st: any = await rec.getStatusAsync();
+          if (st?.isRecording) setRecordingMs(st?.durationMillis ?? 0);
         } catch {}
       }, 250);
-    } catch {
-      Alert.alert("Ошибка", "Не удалось начать запись.");
+    } catch (e: any) {
+      Alert.alert("Ошибка", e?.message ?? "Не удалось начать запись.");
     }
   };
 
@@ -639,8 +673,8 @@ export default function ChatScreen() {
 
       await recording.stopAndUnloadAsync();
       const uri = recording.getURI();
-      const status: any = await recording.getStatusAsync();
-      const durationMs = status?.durationMillis ?? recordingMs;
+      const st: any = await recording.getStatusAsync();
+      const durationMs = st?.durationMillis ?? recordingMs;
 
       setRecording(null);
       setRecordingMs(0);
@@ -671,21 +705,51 @@ export default function ChatScreen() {
         durationMs,
         size: up.size,
       });
-    } catch {
-      Alert.alert("Ошибка", "Не удалось отправить голосовое.");
+    } catch (e: any) {
+      Alert.alert("Ошибка", e?.message ?? "Не удалось отправить голосовое.");
     } finally {
       setSendingAttachment(false);
       try {
-        await Audio.setAudioModeAsync({ allowsRecordingIOS: false });
+        await Audio.setAudioModeAsync({ allowsRecordingIOS: false, playsInSilentModeIOS: true });
       } catch {}
     }
   };
+
+  const commitAudioUiThrottled = useCallback((next: typeof audioUi) => {
+    pendingAudioUiRef.current = next;
+
+    const now = Date.now();
+    const minInterval = 220; // ~4-5 updates/sec
+
+    const flush = () => {
+      rafRef.current = null;
+      if (!pendingAudioUiRef.current) return;
+      setAudioUi(pendingAudioUiRef.current);
+      pendingAudioUiRef.current = null;
+      lastAudioUiCommitRef.current = Date.now();
+    };
+
+    // If enough time passed, commit now on next frame.
+    if (now - lastAudioUiCommitRef.current >= minInterval) {
+      if (rafRef.current) return;
+      rafRef.current = requestAnimationFrame(flush);
+      return;
+    }
+
+    // Otherwise schedule a delayed RAF flush (one pending only).
+    if (rafRef.current) return;
+    const delay = minInterval - (now - lastAudioUiCommitRef.current);
+    setTimeout(() => {
+      if (rafRef.current) return;
+      rafRef.current = requestAnimationFrame(flush);
+    }, delay);
+  }, []);
 
   const onToggleAudio = async (m: ChatMessage) => {
     if (!m.url) return;
 
     try {
-      // если нажали на тот же трек
+      // If tapping same item: toggle play/pause
       if (audioUi.playingId === m.id && soundRef.current) {
         const st: any = await soundRef.current.getStatusAsync();
         if (st?.isLoaded && st?.isPlaying) {
@@ -698,7 +762,7 @@ export default function ChatScreen() {
         return;
       }
 
-      // иначе — грузим новый
+      // Load new
       if (soundRef.current) {
         try {
           await soundRef.current.unloadAsync();
@@ -720,20 +784,20 @@ export default function ChatScreen() {
           const st: any = status as any;
           if (!st?.isLoaded) return;
 
-          setAudioUi((p) => ({
-            ...p,
+          commitAudioUiThrottled({
             playingId: m.id,
             isPlaying: !!st.isPlaying,
             positionMs: st.positionMillis ?? 0,
             durationMs: st.durationMillis ?? (m.durationMs ?? 0),
-          }));
+          });
 
           if (st.didJustFinish) {
-            setAudioUi((p) => ({
-              ...p,
+            commitAudioUiThrottled({
+              playingId: m.id,
               isPlaying: false,
               positionMs: 0,
-            }));
+              durationMs: st.durationMillis ?? (m.durationMs ?? 0),
+            });
           }
         }
       );
@@ -754,9 +818,7 @@ export default function ChatScreen() {
     const { layoutMeasurement, contentOffset, contentSize } = e.nativeEvent;
     const paddingToBottom = 140;
 
-    const nearBottom =
-      layoutMeasurement.height + contentOffset.y >= contentSize.height - paddingToBottom;
-
+    const nearBottom = layoutMeasurement.height + contentOffset.y >= contentSize.height - paddingToBottom;
     isNearBottomRef.current = nearBottom;
 
     const shouldShow = !nearBottom && contentSize.height > layoutMeasurement.height + 200;
@@ -766,7 +828,8 @@ export default function ChatScreen() {
   const memoryLabel = user?.uid ? "Память включена (профиль)" : guest ? "Гостевой режим" : "Без входа";
   const statusLabel = sendingAttachment ? "Отправка..." : aiThinking ? "AI печатает..." : memoryLabel;
 
-  const inputDisabled = sendingAttachment || aiThinking;
+  // важное: НЕ блокируем plus из-за aiThinking — только из-за отправки файла
+  const textDisabled = sendingAttachment || aiThinking;
 
   return (
     <Screen contentStyle={{ paddingTop: 0 }}>
@@ -785,7 +848,7 @@ export default function ChatScreen() {
       <View style={styles.header}>
         <View style={{ width: 36, height: 36 }} />
         <Image source={LOGO} style={styles.logo} />
-        <Pressable style={styles.headerIcon} onPress={() => setPlusOpen(true)}>
+        <Pressable style={styles.headerIcon} onPress={() => setPlusOpen(true)} disabled={sendingAttachment}>
           <Ionicons name="add" size={24} color={colors.text} />
         </Pressable>
       </View>
@@ -814,12 +877,7 @@ export default function ChatScreen() {
               showsVerticalScrollIndicator={false}
               contentContainerStyle={styles.listContent}
               renderItem={({ item }) => (
-                <Bubble
-                  m={item}
-                  onOpenImage={openImage}
-                  audioUi={audioUi}
-                  onToggleAudio={onToggleAudio}
-                />
+                <Bubble m={item} onOpenImage={openImage} audioUi={audioUi} onToggleAudio={onToggleAudio} />
               )}
               onScroll={onScroll}
               scrollEventThrottle={16}
@@ -848,20 +906,12 @@ export default function ChatScreen() {
         <View style={styles.footer}>
           {/* Quick prompts */}
           <View style={styles.quickRow}>
-            <Pressable
-              style={styles.quickCard}
-              onPress={() => sendText("Помоги мне с законом — заполнить документ")}
-              disabled={inputDisabled}
-            >
+            <Pressable style={styles.quickCard} onPress={() => sendText("Помоги мне с законом — заполнить документ")} disabled={textDisabled}>
               <Text style={styles.quickTitle}>Помоги мне с законом</Text>
               <Text style={styles.quickSub}>заполнить документ</Text>
             </Pressable>
 
-            <Pressable
-              style={styles.quickCard}
-              onPress={() => sendText("Помоги мне выучить законы РК")}
-              disabled={inputDisabled}
-            >
+            <Pressable style={styles.quickCard} onPress={() => sendText("Помоги мне выучить законы РК")} disabled={textDisabled}>
               <Text style={styles.quickTitle}>Помоги мне выучить</Text>
               <Text style={styles.quickSub}>законы РК</Text>
             </Pressable>
@@ -870,9 +920,9 @@ export default function ChatScreen() {
           {/* Input */}
           <View style={styles.promptRow}>
             <Pressable
-              style={[styles.plusBtn, inputDisabled && { opacity: 0.6 }]}
+              style={[styles.plusBtn, sendingAttachment && { opacity: 0.6 }]}
               onPress={() => setPlusOpen(true)}
-              disabled={inputDisabled}
+              disabled={sendingAttachment}
             >
               <Ionicons name="add" size={24} color={colors.muted} />
             </Pressable>
@@ -886,14 +936,14 @@ export default function ChatScreen() {
                 style={styles.input}
                 returnKeyType="send"
                 onSubmitEditing={() => sendText()}
-                editable={!inputDisabled}
+                editable={!textDisabled}
               />
 
               {/* Mic toggle */}
               <Pressable
                 style={[styles.pillIcon, recording && { backgroundColor: "#FFE9E9" }]}
                 onPress={recording ? stopRecordingAndSend : startRecording}
-                disabled={inputDisabled}
+                disabled={sendingAttachment} // микрофон не блокируем из-за aiThinking
               >
                 <Ionicons
                   name={recording ? "stop-circle-outline" : "mic-outline"}
@@ -903,7 +953,7 @@ export default function ChatScreen() {
               </Pressable>
 
               {/* Send */}
-              <Pressable style={styles.pillIcon} onPress={() => sendText()} disabled={inputDisabled}>
+              <Pressable style={styles.pillIcon} onPress={() => sendText()} disabled={textDisabled}>
                 <Ionicons name="send-outline" size={20} color={colors.text} />
               </Pressable>
             </View>
