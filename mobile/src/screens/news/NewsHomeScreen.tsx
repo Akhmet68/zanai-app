@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { ColorValue, ViewStyle } from "react-native";
 import {
   View,
   Text,
@@ -15,7 +16,6 @@ import {
   Share,
   Linking,
 } from "react-native";
-import type { ColorValue } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -171,18 +171,18 @@ function buildMockNews(): NewsItem[] {
         category === "law"
           ? `Юрпрактика: частый вопрос №${i + 1}`
           : category === "tech"
-            ? `AI-обзор недели №${i + 1}`
-            : category === "soc"
-              ? `Общество: тренд обсуждения №${i + 1}`
-              : `Бизнес: кейс компании №${i + 1}`,
+          ? `AI-обзор недели №${i + 1}`
+          : category === "soc"
+          ? `Общество: тренд обсуждения №${i + 1}`
+          : `Бизнес: кейс компании №${i + 1}`,
       titleKZ:
         category === "law"
           ? `Құқық: жиі сұрақ №${i + 1}`
           : category === "tech"
-            ? `ЖИ апталық шолу №${i + 1}`
-            : category === "soc"
-              ? `Қоғам: талқылау тренді №${i + 1}`
-              : `Бизнес: компания кейсі №${i + 1}`,
+          ? `ЖИ апталық шолу №${i + 1}`
+          : category === "soc"
+          ? `Қоғам: талқылау тренді №${i + 1}`
+          : `Бизнес: компания кейсі №${i + 1}`,
       subtitleRU: "Короткое описание новости для демонстрации интерфейса…",
       subtitleKZ: "Интерфейсті көрсетуге арналған қысқа сипаттама…",
       bodyRU:
@@ -209,8 +209,6 @@ if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
-type GradientColors = readonly [ColorValue, ColorValue, ...ColorValue[]];
-
 export default function NewsHomeScreen() {
   const insets = useSafeAreaInsets();
 
@@ -233,7 +231,6 @@ export default function NewsHomeScreen() {
 
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const bookmarksRef = useRef<Record<string, boolean>>({});
-
   useEffect(() => {
     bookmarksRef.current = bookmarks;
   }, [bookmarks]);
@@ -252,6 +249,11 @@ export default function NewsHomeScreen() {
       badgeText: colors.navy,
     };
   }, [settings.darkMode]);
+
+  // ✅ FIX #1: Screen.style у тебя ожидает ViewStyle (не массив). Делаем flatten -> ViewStyle.
+  const screenStyle = useMemo<ViewStyle>(() => {
+    return StyleSheet.flatten([styles.screen, { backgroundColor: theme.bg }]) as ViewStyle;
+  }, [theme.bg]);
 
   const bookmarkCount = useMemo(() => Object.values(bookmarks).filter(Boolean).length, [bookmarks]);
 
@@ -276,10 +278,7 @@ export default function NewsHomeScreen() {
   const [active, setActive] = useState<NewsItem | null>(null);
 
   const openItem = useCallback((n: NewsItem) => {
-    setRead((prev) => {
-      if (prev[n.id]) return prev;
-      return { ...prev, [n.id]: true };
-    });
+    setRead((prev) => (prev[n.id] ? prev : { ...prev, [n.id]: true }));
     setActive(n);
   }, []);
 
@@ -332,7 +331,6 @@ export default function NewsHomeScreen() {
   const toggleBookmark = useCallback(
     (id: string) => {
       LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-
       setBookmarks((prev) => {
         const next = { ...prev, [id]: !prev[id] };
         persistFavoritesDebounced(next);
@@ -369,7 +367,8 @@ export default function NewsHomeScreen() {
     try {
       const raw = await AsyncStorage.getItem(KEY_PROFILE_SETTINGS);
       const prev = raw ? (JSON.parse(raw) as Partial<Settings>) : {};
-      const nextLang: Lang = (settings.lang === "RU" ? "KZ" : "RU") as Lang;
+      const nextLang: Lang = settings.lang === "RU" ? "KZ" : "RU";
+
       await AsyncStorage.setItem(
         KEY_PROFILE_SETTINGS,
         JSON.stringify({
@@ -390,18 +389,14 @@ export default function NewsHomeScreen() {
       await Share.share({
         message: `${title}\n\n${text}${active.url ? `\n\n${active.url}` : ""}`,
       });
-    } catch {
-      // молча
-    }
+    } catch {}
   }, [active, lang]);
 
   const openSource = useCallback(async () => {
     if (!active?.url) return;
     try {
       await Linking.openURL(active.url);
-    } catch {
-      // молча
-    }
+    } catch {}
   }, [active]);
 
   useEffect(() => {
@@ -447,12 +442,14 @@ export default function NewsHomeScreen() {
     }, [hydrate])
   );
 
-  const heroGradient = useMemo<GradientColors>(() => {
-    return theme.dark ? ["#0B1E5B", "#0F172A", theme.bg] : ["#0B1E5B", "#1B2C63", theme.bg];
+  // ✅ FIX #2: LinearGradient.colors должен быть tuple (не string[])
+  const heroGradient = useMemo<readonly [ColorValue, ColorValue, ColorValue]>(() => {
+    if (!theme.dark) return ["#0B1E5B", "#1B2C63", theme.bg];
+    return ["#0B1E5B", "#0F172A", theme.bg];
   }, [theme.bg, theme.dark]);
 
   return (
-    <Screen style={StyleSheet.flatten([styles.screen, { backgroundColor: theme.bg }])}>
+    <Screen style={screenStyle}>
       <ScrollView
         contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + 6 }]}
         showsVerticalScrollIndicator={false}
@@ -531,6 +528,7 @@ export default function NewsHomeScreen() {
           )}
         </LinearGradient>
 
+        {/* Новости дня */}
         <View style={styles.sectionHead}>
           <Text style={[styles.sectionTitle, { color: theme.text }]}>{t(lang, "Новости дня", "Күн жаңалықтары")}</Text>
           <Text style={[styles.sectionHint, { color: theme.muted }]}>{t(lang, "самое важное", "ең маңыздысы")}</Text>
@@ -598,6 +596,7 @@ export default function NewsHomeScreen() {
           })}
         </View>
 
+        {/* Тренды */}
         <View style={[styles.sectionHead, { marginTop: 16 }]}>
           <Text style={[styles.sectionTitle, { color: theme.text }]}>{t(lang, "Тренды", "Трендтер")}</Text>
           <Text style={[styles.sectionHint, { color: theme.muted }]}>{t(lang, "подборка", "іріктеу")}</Text>
@@ -644,6 +643,7 @@ export default function NewsHomeScreen() {
           })}
         </ScrollView>
 
+        {/* Фильтры */}
         <View style={[styles.sectionHead, { marginTop: 16 }]}>
           <Text style={[styles.sectionTitle, { color: theme.text }]}>{t(lang, "Лента", "Лента")}</Text>
           <Text style={[styles.sectionHint, { color: theme.muted }]}>{t(lang, "фильтры", "сүзгілер")}</Text>
@@ -673,6 +673,7 @@ export default function NewsHomeScreen() {
           })}
         </ScrollView>
 
+        {/* Список */}
         {list.length === 0 ? (
           <View style={[styles.empty, { borderColor: theme.border, backgroundColor: theme.card }]}>
             <Ionicons name="search-outline" size={26} color={theme.muted} />
@@ -701,10 +702,10 @@ export default function NewsHomeScreen() {
                         n.category === "law"
                           ? "shield-checkmark-outline"
                           : n.category === "tech"
-                            ? "sparkles-outline"
-                            : n.category === "soc"
-                              ? "people-outline"
-                              : "briefcase-outline"
+                          ? "sparkles-outline"
+                          : n.category === "soc"
+                          ? "people-outline"
+                          : "briefcase-outline"
                       }
                       size={18}
                       color={theme.text}
@@ -765,6 +766,7 @@ export default function NewsHomeScreen() {
           </View>
         )}
 
+        {/* Load more */}
         {filtered.length > visibleCount && (
           <Pressable style={[styles.primaryBtn, { backgroundColor: colors.navy }]} onPress={loadMore}>
             <Text style={styles.primaryBtnText}>
@@ -776,6 +778,7 @@ export default function NewsHomeScreen() {
         <View style={{ height: 30 }} />
       </ScrollView>
 
+      {/* DETAILS MODAL */}
       <Modal visible={!!active} animationType="slide" onRequestClose={() => setActive(null)} presentationStyle="pageSheet">
         <View style={[styles.modalWrap, { paddingTop: insets.top + 10, backgroundColor: theme.bg }]}>
           <View style={styles.modalHeader}>
