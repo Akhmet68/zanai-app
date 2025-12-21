@@ -18,6 +18,8 @@ function guessExtFromMime(mime?: string) {
   return "";
 }
 
+// Типы expo-file-system у тебя почему-то “не видят” documentDirectory/cacheDirectory,
+// поэтому работаем через any — это норм для Expo Go
 const FS: any = FileSystem;
 
 function getWritableDir(): string | null {
@@ -42,6 +44,7 @@ async function ensureFileUri(uri: string, fileName: string): Promise<{ fileUri: 
 
   const dest = joinPath(baseDir, `${Date.now()}_${safeName(fileName)}`);
 
+  // На Android content:// часто ломает fetch(blob), поэтому копируем в file://
   await FS.copyAsync({ from: uri, to: dest });
 
   return { fileUri: dest, shouldCleanup: true };

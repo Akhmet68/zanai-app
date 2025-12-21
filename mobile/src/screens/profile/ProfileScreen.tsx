@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -72,10 +72,6 @@ type RowProps = {
   disabled?: boolean;
 };
 
-function hapticLight() {
-  Haptics.selectionAsync?.().catch?.(() => {});
-}
-
 function t(lang: Lang, ru: string, kz: string) {
   return lang === "RU" ? ru : kz;
 }
@@ -89,11 +85,24 @@ function fmtDate(iso?: string) {
   return `${dd}.${mm}.${yyyy}`;
 }
 
+function hapticLight() {
+  // безопасно, без крэшей на девайсах без haptics
+  Haptics.selectionAsync?.().catch?.(() => {});
+}
+
 if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
-function Row({ icon, title, subtitle, right, onPress, danger, disabled }: RowProps) {
+const Row = React.memo(function Row({
+  icon,
+  title,
+  subtitle,
+  right,
+  onPress,
+  danger,
+  disabled,
+}: RowProps) {
   return (
     <Pressable
       onPress={() => {
@@ -122,16 +131,24 @@ function Row({ icon, title, subtitle, right, onPress, danger, disabled }: RowPro
       </View>
     </Pressable>
   );
-}
+});
 
-function QuickAction({
+const QuickAction = React.memo(function QuickAction({
   icon,
   label,
   onPress,
+  bg,
+  border,
+  textColor,
+  softBg,
 }: {
   icon: keyof typeof Ionicons.glyphMap;
   label: string;
   onPress: () => void;
+  bg: string;
+  border: string;
+  textColor: string;
+  softBg: string;
 }) {
   return (
     <Pressable
@@ -139,17 +156,21 @@ function QuickAction({
         hapticLight();
         onPress();
       }}
-      style={({ pressed }) => [styles.quickCard, pressed ? { transform: [{ scale: 0.98 }], opacity: 0.9 } : null]}
+      style={({ pressed }) => [
+        styles.quickCard,
+        { backgroundColor: bg, borderColor: border },
+        pressed ? { transform: [{ scale: 0.98 }], opacity: 0.9 } : null,
+      ]}
     >
-      <View style={styles.quickIcon}>
-        <Ionicons name={icon} size={20} color={colors.text} />
+      <View style={[styles.quickIcon, { backgroundColor: softBg, borderColor: border }]}>
+        <Ionicons name={icon} size={20} color={textColor} />
       </View>
-      <Text style={styles.quickText} numberOfLines={1}>
+      <Text style={[styles.quickText, { color: textColor }]} numberOfLines={1}>
         {label}
       </Text>
     </Pressable>
   );
-}
+});
 
 export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
@@ -175,21 +196,76 @@ export default function ProfileScreen() {
   const [editOpen, setEditOpen] = useState(false);
   const [editName, setEditName] = useState("");
 
+  // --- Theme ---
   const theme = useMemo(() => {
-    // локальная тема для экрана (не трогаем весь проект)
-    return {
-      bg: darkMode ? "#0B0B0D" : colors.white,
-      card: darkMode ? "#111115" : colors.white,
-      border: darkMode ? "rgba(255,255,255,0.12)" : colors.border,
-      text: darkMode ? "#F8FAFC" : colors.text,
-      muted: darkMode ? "#A1A1AA" : colors.muted,
-      heroGrad: darkMode ? (["#0B1E5B", "#111115", "#0B0B0D"] as const) : (["#0B1E5B", "#1B2C63", "#FFFFFF"] as const),
-    };
+    const bg = darkMode ? "#0B0B0D" : colors.white;
+    const card = darkMode ? "#111115" : colors.white;
+    const border = darkMode ? "rgba(255,255,255,0.12)" : colors.border;
+    const text = darkMode ? "#F8FAFC" : colors.text;
+    const muted = darkMode ? "#A1A1AA" : colors.muted;
+    const soft = darkMode ? "#1B1B22" : "#F7F7F9";
+
+    // ВАЖНО: LinearGradient.colors требует tuple (минимум 2 цвета)
+    const heroGrad: readonly [string, string, string] = darkMode
+      ? ["#0B1E5B", "#111115", "#0B0B0D"]
+      : ["#0B1E5B", "#1B2C63", "#FFFFFF"];
+
+    return { bg, card, border, text, muted, soft, heroGrad };
   }, [darkMode]);
+
+  // --- Safe navigate helper (чтобы не ловить NAVIGATE warning) ---
+  const routeNamesRef = useRef<Set<string>>(new Set());
+
+  const rebuildRouteNames = useCallback(() => {
+    try {
+      const state = navigation.getState?.();
+      const names = new Set<string>();
+
+      const walk = (s: any) => {
+        if (!s?.routes) return;
+        for (const r of s.routes) {
+          if (r?.name) names.add(r.name);
+          if (r?.state) walk(r.state);
+        }
+      };
+
+      walk(state);
+      routeNamesRef.current = names;
+    } catch {
+      // если что — просто не блокируем навигацию
+      routeNamesRef.current = new Set();
+    }
+  }, [navigation]);
+
+  useEffect(() => {
+    rebuildRouteNames();
+    const unsub = navigation.addListener?.("state", rebuildRouteNames);
+    return unsub;
+  }, [navigation, rebuildRouteNames]);
+
+  const navigateSafe = useCallback(
+    (name: string, params?: any) => {
+      const names = routeNamesRef.current;
+      // если не смогли собрать state — не мешаем
+      if (names.size > 0 && !names.has(name)) {
+        Alert.alert(
+          t(lang, "Экран не подключен", "Экран қосылмаған"),
+          t(
+            lang,
+            `Навигация на "${name}" не настроена. Добавь экран в navigator.`,
+            `Навигация "${name}" бапталмаған. Экранды navigator-ға қос.`
+          )
+        );
+        return;
+      }
+      navigation.navigate(name, params);
+    },
+    [navigation, lang]
+  );
 
   // --- Firestore profile ---
   useEffect(() => {
-    if (!user?.uid) {
+    if (!user?.uid || guest) {
       setProfile(null);
       return;
     }
@@ -197,7 +273,7 @@ export default function ProfileScreen() {
     return onSnapshot(ref, (snap) => {
       setProfile(snap.exists() ? (snap.data() as UserProfileDoc) : null);
     });
-  }, [user?.uid]);
+  }, [user?.uid, guest]);
 
   // --- Load settings (persisted) ---
   useEffect(() => {
@@ -243,11 +319,9 @@ export default function ProfileScreen() {
 
       const favMap = mapRaw ? (JSON.parse(mapRaw) as Record<string, boolean>) : {};
       const ids = Object.keys(favMap).filter((k) => favMap[k]);
-
       setFavoritesCount(ids.length);
 
       const items = itemsRaw ? (JSON.parse(itemsRaw) as FavoritePreview[]) : [];
-      // фильтруем по ids, сортируем по дате
       const filtered = items
         .filter((it) => ids.includes(it.id))
         .sort((a, b) => (b.createdAtISO ?? "").localeCompare(a.createdAtISO ?? ""));
@@ -265,12 +339,15 @@ export default function ProfileScreen() {
     }, [loadFavorites])
   );
 
-  const displayName = guest ? t(lang, "Гость", "Қонақ") : profile?.displayName || user?.displayName || "ZanAI User";
-  const email = guest ? "—" : profile?.email || user?.email || "—";
-  const plan = guest ? "Free" : profile?.plan || "Free";
+  const displayName = useMemo(() => {
+    if (guest) return t(lang, "Гость", "Қонақ");
+    return profile?.displayName || user?.displayName || "ZanAI User";
+  }, [guest, lang, profile?.displayName, user?.displayName]);
 
-  const shownAvatar =
-    avatarUri || profile?.avatarUrl || (user as any)?.photoURL || null;
+  const email = useMemo(() => (guest ? "—" : profile?.email || user?.email || "—"), [guest, profile?.email, user?.email]);
+  const plan = useMemo(() => (guest ? "Free" : profile?.plan || "Free"), [guest, profile?.plan]);
+
+  const shownAvatar = avatarUri || profile?.avatarUrl || (user as any)?.photoURL || null;
 
   const completeness = useMemo(() => {
     let score = 0;
@@ -283,7 +360,7 @@ export default function ProfileScreen() {
 
   const percent = Math.round(completeness * 100);
 
-  const openLangPicker = () => {
+  const openLangPicker = useCallback(() => {
     Alert.alert(
       t(lang, "Язык", "Тіл"),
       t(lang, "Выберите язык интерфейса", "Интерфейс тілін таңдаңыз"),
@@ -305,54 +382,60 @@ export default function ProfileScreen() {
         { text: t(lang, "Отмена", "Болдырмау"), style: "cancel" },
       ]
     );
-  };
+  }, [lang]);
 
-  const toggleBiometric = async (next: boolean) => {
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+  const toggleBiometric = useCallback(
+    async (next: boolean) => {
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
 
-    if (!next) {
-      setBiometric(false);
-      return;
-    }
-
-    try {
-      const hasHw = await LocalAuthentication.hasHardwareAsync();
-      if (!hasHw) {
-        Alert.alert(t(lang, "Недоступно", "Қолжетімсіз"), t(lang, "На устройстве нет биометрии.", "Құрылғыда биометрия жоқ."));
+      if (!next) {
         setBiometric(false);
         return;
       }
 
-      const enrolled = await LocalAuthentication.isEnrolledAsync();
-      if (!enrolled) {
-        Alert.alert(
-          t(lang, "Нужно настроить", "Баптау керек"),
-          t(lang, "Добавьте Face ID / Touch ID в настройках телефона.", "Телефон баптауларында Face ID / Touch ID қосыңыз.")
-        );
+      try {
+        const hasHw = await LocalAuthentication.hasHardwareAsync();
+        if (!hasHw) {
+          Alert.alert(
+            t(lang, "Недоступно", "Қолжетімсіз"),
+            t(lang, "На устройстве нет биометрии.", "Құрылғыда биометрия жоқ.")
+          );
+          setBiometric(false);
+          return;
+        }
+
+        const enrolled = await LocalAuthentication.isEnrolledAsync();
+        if (!enrolled) {
+          Alert.alert(
+            t(lang, "Нужно настроить", "Баптау керек"),
+            t(lang, "Добавьте Face ID / Touch ID в настройках телефона.", "Телефон баптауларында Face ID / Touch ID қосыңыз.")
+          );
+          setBiometric(false);
+          return;
+        }
+
+        const res = await LocalAuthentication.authenticateAsync({
+          promptMessage: t(lang, "Подтвердите биометрию", "Биометрияны растаңыз"),
+          cancelLabel: t(lang, "Отмена", "Болдырмау"),
+          disableDeviceFallback: false,
+        });
+
+        if (!res.success) {
+          setBiometric(false);
+          return;
+        }
+
+        setBiometric(true);
+        Alert.alert(t(lang, "Готово ✅", "Дайын ✅"), t(lang, "Биометрия включена.", "Биометрия қосылды."));
+      } catch {
         setBiometric(false);
-        return;
+        Alert.alert(t(lang, "Ошибка", "Қате"), t(lang, "Не удалось включить биометрию.", "Биометрияны қосу мүмкін болмады."));
       }
+    },
+    [lang]
+  );
 
-      const res = await LocalAuthentication.authenticateAsync({
-        promptMessage: t(lang, "Подтвердите биометрию", "Биометрияны растаңыз"),
-        cancelLabel: t(lang, "Отмена", "Болдырмау"),
-        disableDeviceFallback: false,
-      });
-
-      if (!res.success) {
-        setBiometric(false);
-        return;
-      }
-
-      setBiometric(true);
-      Alert.alert(t(lang, "Готово ✅", "Дайын ✅"), t(lang, "Биометрия включена.", "Биометрия қосылды."));
-    } catch {
-      setBiometric(false);
-      Alert.alert(t(lang, "Ошибка", "Қате"), t(lang, "Не удалось включить биометрию.", "Биометрияны қосу мүмкін болмады."));
-    }
-  };
-
-  const pickAvatar = async () => {
+  const pickAvatar = useCallback(async () => {
     hapticLight();
 
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -372,19 +455,19 @@ export default function ProfileScreen() {
 
     const uri = res.assets[0].uri;
 
-    // локально покажем сразу
+    // локально показываем сразу
     setAvatarUri(uri);
     try {
       await AsyncStorage.setItem(KEY_PROFILE_AVATAR, uri);
     } catch {}
 
-    // если залогинен — загрузим в Storage и запишем в Firestore (реально “как у взрослых”)
+    // если залогинен — загрузим в Storage и запишем в Firestore
     if (user?.uid && !guest) {
       try {
         const up = await uploadUriToStorage({
           uid: user.uid,
           uri,
-          folder: "chat-images",
+          folder: "profile" as any,
           fileName: `avatar_${Date.now()}.jpg`,
           contentType: "image/jpeg",
         });
@@ -395,16 +478,16 @@ export default function ProfileScreen() {
           { merge: true }
         );
 
-        // после успешной записи можно хранить уже url (чтобы не зависеть от file://)
+        // после успешной записи — не зависим от file://
         setAvatarUri(null);
-        await AsyncStorage.setItem(KEY_PROFILE_AVATAR, "");
+        await AsyncStorage.removeItem(KEY_PROFILE_AVATAR);
       } catch {
         // не критично: локально останется
       }
     }
-  };
+  }, [lang, user?.uid, guest, displayName, email]);
 
-  const removeAvatar = () => {
+  const removeAvatar = useCallback(() => {
     Alert.alert(t(lang, "Аватар", "Аватар"), t(lang, "Удалить фото?", "Фотосуретті жою керек пе?"), [
       { text: t(lang, "Отмена", "Болдырмау"), style: "cancel" },
       {
@@ -415,19 +498,18 @@ export default function ProfileScreen() {
           try {
             await AsyncStorage.removeItem(KEY_PROFILE_AVATAR);
           } catch {}
-          // (опционально) можно ещё стереть avatarUrl в Firestore — пока не делаем
         },
       },
     ]);
-  };
+  }, [lang]);
 
-  const openEditName = () => {
+  const openEditName = useCallback(() => {
     if (guest) return;
     setEditName(String(profile?.displayName || user?.displayName || ""));
     setEditOpen(true);
-  };
+  }, [guest, profile?.displayName, user?.displayName]);
 
-  const saveName = async () => {
+  const saveName = useCallback(async () => {
     const n = editName.trim();
     if (n.length < 2) {
       Alert.alert(t(lang, "Ошибка", "Қате"), t(lang, "Имя слишком короткое.", "Атыңыз тым қысқа."));
@@ -435,24 +517,24 @@ export default function ProfileScreen() {
     }
     setEditOpen(false);
 
-    if (!user?.uid) return;
+    if (!user?.uid || guest) return;
 
     try {
-      await setDoc(doc(db, "users", user.uid), { displayName: n } as UserProfileDoc, { merge: true });
+      await setDoc(doc(db, "users", user.uid), { displayName: n, lang } as UserProfileDoc, { merge: true });
       Alert.alert(t(lang, "Готово ✅", "Дайын ✅"), t(lang, "Имя обновлено.", "Атыңыз жаңартылды."));
     } catch {
       Alert.alert(t(lang, "Ошибка", "Қате"), t(lang, "Не удалось обновить имя.", "Атыңызды жаңарту мүмкін болмады."));
     }
-  };
+  }, [editName, lang, user?.uid, guest]);
 
-  const onSupport = () => {
+  const onSupport = useCallback(() => {
     const emailTo = "support@zanai.app";
     Linking.openURL(`mailto:${emailTo}?subject=ZanAI%20Support`).catch(() =>
       Alert.alert(t(lang, "Ошибка", "Қате"), t(lang, "Не удалось открыть почту.", "Поштаны ашу мүмкін болмады."))
     );
-  };
+  }, [lang]);
 
-  const onShareApp = async () => {
+  const onShareApp = useCallback(async () => {
     try {
       await Share.share({
         message: t(
@@ -462,23 +544,36 @@ export default function ProfileScreen() {
         ),
       });
     } catch {}
-  };
+  }, [lang]);
 
-  const onLogout = () => {
+  const onLogout = useCallback(() => {
     Alert.alert(t(lang, "Выход", "Шығу"), t(lang, "Выйти из аккаунта?", "Аккаунттан шығасыз ба?"), [
       { text: t(lang, "Отмена", "Болдырмау"), style: "cancel" },
       { text: t(lang, "Выйти", "Шығу"), style: "destructive", onPress: () => logout() },
     ]);
-  };
+  }, [lang, logout]);
 
-  const openFavorites = () => {
-    // если у тебя есть экран Favorites — будет круто
-    try {
-      navigation.navigate("Favorites");
-    } catch {
-      Alert.alert(t(lang, "Избранное", "Таңдаулы"), t(lang, "Экран Favorites пока не подключен.", "Favorites экраны әлі қосылмаған."));
-    }
-  };
+  const openFavorites = useCallback(() => {
+    navigateSafe("Favorites");
+  }, [navigateSafe]);
+
+  const openSubscription = useCallback(() => {
+    navigateSafe("Subscription");
+  }, [navigateSafe]);
+
+  const openDevices = useCallback(() => {
+    navigateSafe("Devices");
+  }, [navigateSafe]);
+
+  const openChangePassword = useCallback(() => {
+    navigateSafe("ChangePassword");
+  }, [navigateSafe]);
+
+  const openPolicy = useCallback(() => {
+    // поставь свой реальный URL политики
+    const url = "https://example.com/privacy";
+    Linking.openURL(url).catch(() => {});
+  }, []);
 
   return (
     <Screen contentStyle={{ paddingTop: 0, backgroundColor: theme.bg }}>
@@ -494,9 +589,13 @@ export default function ProfileScreen() {
               placeholder={t(lang, "Введите имя", "Атыңызды енгізіңіз")}
               placeholderTextColor={theme.muted}
               style={[styles.modalInput, { color: theme.text, borderColor: theme.border }]}
+              autoCorrect={false}
+              autoCapitalize="words"
+              returnKeyType="done"
+              onSubmitEditing={saveName}
             />
             <View style={styles.modalBtns}>
-              <Pressable style={[styles.modalBtn, { borderColor: theme.border }]} onPress={() => setEditOpen(false)}>
+              <Pressable style={[styles.modalBtn, { borderColor: theme.border, backgroundColor: theme.card }]} onPress={() => setEditOpen(false)}>
                 <Text style={[styles.modalBtnText, { color: theme.text }]}>{t(lang, "Отмена", "Болдырмау")}</Text>
               </Pressable>
               <Pressable style={[styles.modalBtnPrimary]} onPress={saveName}>
@@ -512,16 +611,27 @@ export default function ProfileScreen() {
           <View style={styles.heroTop}>
             <Image source={LOGO} style={styles.heroLogo} />
             <View style={styles.heroRight}>
-              <Pressable onPress={openLangPicker} style={({ pressed }) => [styles.langBtn, { borderColor: theme.border }, pressed && { opacity: 0.85 }]}>
-                <Text style={[styles.langText, { color: colors.text }]}>{lang}</Text>
-                <Ionicons name="chevron-down" size={16} color={colors.muted} />
+              <Pressable
+                onPress={openLangPicker}
+                style={({ pressed }) => [
+                  styles.langBtn,
+                  { borderColor: theme.border, backgroundColor: theme.card },
+                  pressed && { opacity: 0.85 },
+                ]}
+              >
+                <Text style={[styles.langText, { color: theme.text }]}>{lang}</Text>
+                <Ionicons name="chevron-down" size={16} color={theme.muted} />
               </Pressable>
 
               <Pressable
-                onPress={() => Alert.alert(t(lang, "Поиск", "Іздеу"), t(lang, "Подключим позже 🙂", "Кейін қосамыз 🙂"))}
-                style={({ pressed }) => [styles.iconBtn, { borderColor: theme.border }, pressed && { opacity: 0.85 }]}
+                onPress={onShareApp}
+                style={({ pressed }) => [
+                  styles.iconBtn,
+                  { borderColor: theme.border, backgroundColor: theme.card },
+                  pressed && { opacity: 0.85 },
+                ]}
               >
-                <Ionicons name="search-outline" size={22} color={colors.text} />
+                <Ionicons name="share-outline" size={22} color={theme.text} />
               </Pressable>
             </View>
           </View>
@@ -535,17 +645,17 @@ export default function ProfileScreen() {
                 onLongPress={shownAvatar ? removeAvatar : undefined}
                 style={({ pressed }) => [
                   styles.avatar,
-                  { borderColor: theme.border, backgroundColor: darkMode ? "#1B1B22" : "#F7F7F9" },
+                  { borderColor: theme.border, backgroundColor: theme.soft },
                   pressed ? { transform: [{ scale: 0.98 }], opacity: 0.95 } : null,
                 ]}
               >
                 {shownAvatar ? (
                   <Image source={{ uri: shownAvatar }} style={styles.avatarImg} />
                 ) : (
-                  <Ionicons name="person" size={26} color={colors.muted} />
+                  <Ionicons name="person" size={26} color={theme.muted} />
                 )}
-                <View style={[styles.avatarBadge, { borderColor: theme.border }]}>
-                  <Ionicons name="camera" size={14} color="#111" />
+                <View style={[styles.avatarBadge, { borderColor: theme.border, backgroundColor: theme.card }]}>
+                  <Ionicons name="camera" size={14} color={theme.text} />
                 </View>
               </Pressable>
 
@@ -562,7 +672,7 @@ export default function ProfileScreen() {
                 <Text style={[styles.userEmail, { color: theme.muted }]}>{email}</Text>
 
                 <View style={styles.badgesRow}>
-                  <View style={[styles.badge, { backgroundColor: darkMode ? "#1B1B22" : "#F2F2F2" }]}>
+                  <View style={[styles.badge, { backgroundColor: theme.soft }]}>
                     <Text style={[styles.badgeText, { color: theme.text }]}>{plan}</Text>
                   </View>
                   {guest ? (
@@ -570,8 +680,8 @@ export default function ProfileScreen() {
                       <Text style={[styles.badgeText, { color: "#9A3412" }]}>Guest</Text>
                     </View>
                   ) : (
-                    <View style={[styles.badge, { backgroundColor: "#F5F7FF" }]}>
-                      <Text style={[styles.badgeText, { color: colors.navy }]}>KZ / RU</Text>
+                    <View style={[styles.badge, { backgroundColor: "rgba(96,165,250,0.12)" }]}>
+                      <Text style={[styles.badgeText, { color: theme.text }]}>KZ / RU</Text>
                     </View>
                   )}
                 </View>
@@ -589,19 +699,62 @@ export default function ProfileScreen() {
               </View>
 
               <Text style={[styles.progressHint, { color: theme.muted }]}>
-                {t(lang, "Добавь аватар и включи биометрию — профиль будет выглядеть “профи”.", "Аватар қосып, биометрияны қоссan — профиль “профи” болады.")}
+                {t(lang, "Добавь аватар и включи биометрию — профиль выглядит “профи”.", "Аватар қосып, биометрияны қоссan — профиль “профи” болады.")}
               </Text>
+            </View>
+
+            <View style={styles.statsRow}>
+              <View style={[styles.stat, { borderColor: theme.border }]}>
+                <Text style={[styles.statValue, { color: theme.text }]}>{favoritesCount}</Text>
+                <Text style={[styles.statLabel, { color: theme.muted }]}>{t(lang, "в избранном", "таңдаулыда")}</Text>
+              </View>
+              <View style={[styles.stat, { borderColor: theme.border }]}>
+                <Text style={[styles.statValue, { color: theme.text }]}>{guest ? "—" : "OK"}</Text>
+                <Text style={[styles.statLabel, { color: theme.muted }]}>{t(lang, "аккаунт", "аккаунт")}</Text>
+              </View>
+              <View style={[styles.stat, { borderColor: theme.border }]}>
+                <Text style={[styles.statValue, { color: theme.text }]}>{biometric ? "ON" : "OFF"}</Text>
+                <Text style={[styles.statLabel, { color: theme.muted }]}>{t(lang, "биометрия", "биометрия")}</Text>
+              </View>
             </View>
           </View>
 
           <View style={styles.quickRow}>
-            <QuickAction icon="bookmark-outline" label={t(lang, "Избранное", "Таңдаулы")} onPress={openFavorites} />
-            <QuickAction icon="help-circle-outline" label={t(lang, "Помощь", "Көмек")} onPress={onSupport} />
-            <QuickAction icon="share-social-outline" label={t(lang, "Поделиться", "Бөлісу")} onPress={onShareApp} />
             <QuickAction
-              icon="settings-outline"
-              label={t(lang, "Настройки", "Баптаулар")}
-              onPress={() => Alert.alert(t(lang, "Скоро", "Жақында"), t(lang, "Настройки вынесем отдельно 🙂", "Баптауларды бөлек шығарамыз 🙂"))}
+              icon="bookmark-outline"
+              label={t(lang, "Избранное", "Таңдаулы")}
+              onPress={openFavorites}
+              bg={theme.card}
+              border={theme.border}
+              textColor={theme.text}
+              softBg={theme.soft}
+            />
+            <QuickAction
+              icon="rocket-outline"
+              label={t(lang, "Подписка", "Жазылым")}
+              onPress={openSubscription}
+              bg={theme.card}
+              border={theme.border}
+              textColor={theme.text}
+              softBg={theme.soft}
+            />
+            <QuickAction
+              icon="help-circle-outline"
+              label={t(lang, "Поддержка", "Қолдау")}
+              onPress={onSupport}
+              bg={theme.card}
+              border={theme.border}
+              textColor={theme.text}
+              softBg={theme.soft}
+            />
+            <QuickAction
+              icon="shield-checkmark-outline"
+              label={t(lang, "Политика", "Саясат")}
+              onPress={openPolicy}
+              bg={theme.card}
+              border={theme.border}
+              textColor={theme.text}
+              softBg={theme.soft}
             />
           </View>
         </LinearGradient>
@@ -618,16 +771,14 @@ export default function ProfileScreen() {
           {favoritesCount === 0 ? (
             <View style={styles.favEmpty}>
               <Ionicons name="bookmark-outline" size={22} color={theme.muted} />
-              <Text style={[styles.favEmptyTitle, { color: theme.text }]}>
-                {t(lang, "Пока нет избранного", "Таңдаулы әзірше жоқ")}
-              </Text>
+              <Text style={[styles.favEmptyTitle, { color: theme.text }]}>{t(lang, "Пока нет избранного", "Таңдаулы әзірше жоқ")}</Text>
               <Text style={[styles.favEmptySub, { color: theme.muted }]}>
                 {t(lang, "Сохраняй новости в ленте — они появятся здесь.", "Лентадан жаңалықты сақта — осында шығады.")}
               </Text>
             </View>
           ) : (
             <View style={{ marginTop: 6 }}>
-              {(favorites.slice(0, 3) || []).map((it, idx) => {
+              {favorites.slice(0, 3).map((it, idx) => {
                 const title = lang === "RU" ? it.titleRU : it.titleKZ;
                 const subtitle = lang === "RU" ? it.subtitleRU : it.subtitleKZ;
                 return (
@@ -645,8 +796,8 @@ export default function ProfileScreen() {
                       idx !== 0 && { borderTopWidth: 1, borderTopColor: theme.border },
                     ]}
                   >
-                    <View style={[styles.favIcon, { borderColor: theme.border, backgroundColor: darkMode ? "#1B1B22" : "#F7F7F9" }]}>
-                      <Ionicons name="newspaper-outline" size={18} color={colors.text} />
+                    <View style={[styles.favIcon, { borderColor: theme.border, backgroundColor: theme.soft }]}>
+                      <Ionicons name="newspaper-outline" size={18} color={theme.text} />
                     </View>
                     <View style={{ flex: 1 }}>
                       <Text style={[styles.favTitle, { color: theme.text }]} numberOfLines={2}>
@@ -667,7 +818,7 @@ export default function ProfileScreen() {
               })}
 
               {favoritesCount > 3 && (
-                <Pressable style={[styles.smallBtn, { borderColor: theme.border }]} onPress={openFavorites}>
+                <Pressable style={[styles.smallBtn, { borderColor: theme.border, backgroundColor: theme.card }]} onPress={openFavorites}>
                   <Text style={[styles.smallBtnText, { color: theme.text }]}>
                     {t(lang, "Открыть все", "Барлығын ашу")} ({favoritesCount})
                   </Text>
@@ -699,7 +850,7 @@ export default function ProfileScreen() {
             onPress={() => setNotifications((v) => !v)}
           />
 
-          <View style={styles.divider} />
+          <View style={[styles.divider, { backgroundColor: theme.border }]} />
 
           <Row
             icon="moon-outline"
@@ -719,21 +870,8 @@ export default function ProfileScreen() {
             }
             onPress={() => setDarkMode((v) => !v)}
           />
-        </View>
 
-        {/* Security */}
-        <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.border }]}>
-          <Text style={[styles.sectionTitle, { color: theme.text }]}>{t(lang, "Безопасность", "Қауіпсіздік")}</Text>
-
-          <Row
-            icon="key-outline"
-            title={t(lang, "Изменить пароль", "Құпиясөзді өзгерту")}
-            subtitle={t(lang, "Рекомендуем раз в 3 месяца", "Әр 3 айда бір")}
-            onPress={() => navigation.navigate("ChangePassword")}
-            disabled={guest}
-          />
-
-          <View style={styles.divider} />
+          <View style={[styles.divider, { backgroundColor: theme.border }]} />
 
           <Row
             icon="finger-print-outline"
@@ -751,6 +889,38 @@ export default function ProfileScreen() {
               />
             }
             onPress={() => toggleBiometric(!biometric)}
+          />
+        </View>
+
+        {/* Account */}
+        <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.border }]}>
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>{t(lang, "Аккаунт", "Аккаунт")}</Text>
+
+          <Row
+            icon="key-outline"
+            title={t(lang, "Изменить пароль", "Құпиясөзді өзгерту")}
+            subtitle={t(lang, "Рекомендуем раз в 3 месяца", "Әр 3 айда бір")}
+            onPress={openChangePassword}
+            disabled={guest}
+          />
+
+          <View style={[styles.divider, { backgroundColor: theme.border }]} />
+
+          <Row
+            icon="phone-portrait-outline"
+            title={t(lang, "Устройства", "Құрылғылар")}
+            subtitle={t(lang, "Активные сессии (демо)", "Белсенді сессиялар (демо)")}
+            onPress={openDevices}
+            disabled={guest}
+          />
+
+          <View style={[styles.divider, { backgroundColor: theme.border }]} />
+
+          <Row
+            icon="card-outline"
+            title={t(lang, "Подписка", "Жазылым")}
+            subtitle={t(lang, "Free / Pro (демо)", "Free / Pro (демо)")}
+            onPress={openSubscription}
           />
         </View>
 
@@ -793,7 +963,6 @@ const styles = StyleSheet.create({
     paddingVertical: 9,
     borderRadius: 14,
     borderWidth: 1,
-    backgroundColor: colors.white,
   },
   langText: { fontWeight: "800", fontSize: 12 },
   iconBtn: {
@@ -803,7 +972,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: colors.white,
   },
 
   title: { fontSize: 34, fontWeight: "900", marginTop: 6, marginBottom: 10 },
@@ -828,7 +996,6 @@ const styles = StyleSheet.create({
     width: 24,
     height: 24,
     borderRadius: 12,
-    backgroundColor: "#FFFFFF",
     borderWidth: 1,
     alignItems: "center",
     justifyContent: "center",
@@ -849,13 +1016,16 @@ const styles = StyleSheet.create({
   progressFill: { height: "100%", borderRadius: 999, backgroundColor: colors.navy },
   progressHint: { marginTop: 8, fontSize: 12, lineHeight: 16 },
 
+  statsRow: { flexDirection: "row", gap: 10, marginTop: 12 },
+  stat: { flex: 1, borderWidth: 1, borderRadius: 16, padding: 10 },
+  statValue: { fontSize: 16, fontWeight: "900" },
+  statLabel: { marginTop: 4, fontSize: 11, fontWeight: "800" },
+
   quickRow: { flexDirection: "row", gap: 10, marginTop: 12 },
   quickCard: {
     flex: 1,
     borderWidth: 1,
-    borderColor: colors.border,
     borderRadius: 18,
-    backgroundColor: colors.white,
     paddingVertical: 12,
     alignItems: "center",
     justifyContent: "center",
@@ -865,13 +1035,11 @@ const styles = StyleSheet.create({
     height: 38,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: "#F7F7F9",
     alignItems: "center",
     justifyContent: "center",
     marginBottom: 8,
   },
-  quickText: { fontSize: 12, fontWeight: "900", color: colors.text },
+  quickText: { fontSize: 12, fontWeight: "900" },
 
   card: {
     marginTop: 14,
@@ -885,7 +1053,7 @@ const styles = StyleSheet.create({
   sectionTitle: { fontSize: 14, fontWeight: "900", marginBottom: 10 },
   linkText: { fontSize: 12, fontWeight: "900" },
 
-  divider: { height: 1, backgroundColor: "#EEF0F3" },
+  divider: { height: 1 },
 
   row: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 10 },
   rowIcon: {
@@ -927,7 +1095,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: colors.white,
   },
   smallBtnText: { fontSize: 12, fontWeight: "900" },
 
@@ -936,11 +1103,7 @@ const styles = StyleSheet.create({
   // Modal
   modalBackdrop: { position: "absolute", left: 0, right: 0, top: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.35)" },
   modalCenter: { flex: 1, justifyContent: "center", paddingHorizontal: 18 },
-  modalCard: {
-    borderRadius: 18,
-    borderWidth: 1,
-    padding: 14,
-  },
+  modalCard: { borderRadius: 18, borderWidth: 1, padding: 14 },
   modalTitle: { fontSize: 14, fontWeight: "900" },
   modalInput: {
     marginTop: 10,
@@ -958,7 +1121,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: colors.white,
   },
   modalBtnText: { fontSize: 13, fontWeight: "900" },
   modalBtnPrimary: {
