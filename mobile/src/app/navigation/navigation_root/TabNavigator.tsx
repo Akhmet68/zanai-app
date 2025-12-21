@@ -23,7 +23,6 @@ const Tab = createBottomTabNavigator<TabParamList>();
 export default function TabNavigator() {
   const insets = useSafeAreaInsets();
 
-  // ✅ резервируем только то, что реально перекрывает экран (бар + нижний safe area)
   const bottomPad = Math.max(insets.bottom, 10);
   const reservedBottom = TAB_BAR_HEIGHT + bottomPad;
 

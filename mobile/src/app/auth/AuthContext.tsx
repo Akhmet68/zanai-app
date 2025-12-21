@@ -19,8 +19,6 @@ const Ctx = createContext<AuthCtx | null>(null);
 
 function isSocialUser(u: User | null) {
   if (!u) return false;
-  // password => требует emailVerified
-  // google.com / apple.com => обычно уже доверенные
   return u.providerData?.some((p) => p.providerId && p.providerId !== "password") ?? false;
 }
 

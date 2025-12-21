@@ -82,12 +82,12 @@ const styles = StyleSheet.create({
   },
   leftPlaceholder: { width: 42, height: 42 },
 
-logo: {
-  height: 44,
-  width: undefined,
-  aspectRatio: 240 / 58, // под твой логотип (примерно)
-  resizeMode: "contain",
-},
+  logo: {
+    height: 44,
+    width: undefined,
+    aspectRatio: 240 / 58,
+    resizeMode: "contain",
+  },
 
   right: { flexDirection: "row", alignItems: "center", gap: 10 },
   rightPlaceholder: { width: 42, height: 42 },

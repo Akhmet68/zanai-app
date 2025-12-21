@@ -86,7 +86,6 @@ function fmtDate(iso?: string) {
 }
 
 function hapticLight() {
-  // безопасно, без крэшей на девайсах без haptics
   Haptics.selectionAsync?.().catch?.(() => {});
 }
 
@@ -117,7 +116,12 @@ const Row = React.memo(function Row({
         pressed && onPress ? { transform: [{ scale: 0.985 }], opacity: 0.85 } : null,
       ]}
     >
-      <View style={[styles.rowIcon, danger && { borderColor: "#F1B5B5", backgroundColor: "#FFF5F5" }]}>
+      <View
+        style={[
+          styles.rowIcon,
+          danger && { borderColor: "#F1B5B5", backgroundColor: "#FFF5F5" },
+        ]}
+      >
         <Ionicons name={icon} size={20} color={danger ? "#B42318" : colors.text} />
       </View>
 
@@ -205,7 +209,6 @@ export default function ProfileScreen() {
     const muted = darkMode ? "#A1A1AA" : colors.muted;
     const soft = darkMode ? "#1B1B22" : "#F7F7F9";
 
-    // ВАЖНО: LinearGradient.colors требует tuple (минимум 2 цвета)
     const heroGrad: readonly [string, string, string] = darkMode
       ? ["#0B1E5B", "#111115", "#0B0B0D"]
       : ["#0B1E5B", "#1B2C63", "#FFFFFF"];
@@ -213,7 +216,7 @@ export default function ProfileScreen() {
     return { bg, card, border, text, muted, soft, heroGrad };
   }, [darkMode]);
 
-  // --- Safe navigate helper (чтобы не ловить NAVIGATE warning) ---
+  // --- Safe navigate helper ---
   const routeNamesRef = useRef<Set<string>>(new Set());
 
   const rebuildRouteNames = useCallback(() => {
@@ -232,7 +235,6 @@ export default function ProfileScreen() {
       walk(state);
       routeNamesRef.current = names;
     } catch {
-      // если что — просто не блокируем навигацию
       routeNamesRef.current = new Set();
     }
   }, [navigation]);
@@ -246,7 +248,6 @@ export default function ProfileScreen() {
   const navigateSafe = useCallback(
     (name: string, params?: any) => {
       const names = routeNamesRef.current;
-      // если не смогли собрать state — не мешаем
       if (names.size > 0 && !names.has(name)) {
         Alert.alert(
           t(lang, "Экран не подключен", "Экран қосылмаған"),
@@ -321,9 +322,11 @@ export default function ProfileScreen() {
       const ids = Object.keys(favMap).filter((k) => favMap[k]);
       setFavoritesCount(ids.length);
 
+      const idsSet = new Set(ids); // ✅ чуть быстрее, чем ids.includes в цикле
+
       const items = itemsRaw ? (JSON.parse(itemsRaw) as FavoritePreview[]) : [];
       const filtered = items
-        .filter((it) => ids.includes(it.id))
+        .filter((it) => idsSet.has(it.id))
         .sort((a, b) => (b.createdAtISO ?? "").localeCompare(a.createdAtISO ?? ""));
 
       setFavorites(filtered);
@@ -344,7 +347,10 @@ export default function ProfileScreen() {
     return profile?.displayName || user?.displayName || "ZanAI User";
   }, [guest, lang, profile?.displayName, user?.displayName]);
 
-  const email = useMemo(() => (guest ? "—" : profile?.email || user?.email || "—"), [guest, profile?.email, user?.email]);
+  const email = useMemo(
+    () => (guest ? "—" : profile?.email || user?.email || "—"),
+    [guest, profile?.email, user?.email]
+  );
   const plan = useMemo(() => (guest ? "Free" : profile?.plan || "Free"), [guest, profile?.plan]);
 
   const shownAvatar = avatarUri || profile?.avatarUrl || (user as any)?.photoURL || null;
@@ -408,7 +414,11 @@ export default function ProfileScreen() {
         if (!enrolled) {
           Alert.alert(
             t(lang, "Нужно настроить", "Баптау керек"),
-            t(lang, "Добавьте Face ID / Touch ID в настройках телефона.", "Телефон баптауларында Face ID / Touch ID қосыңыз.")
+            t(
+              lang,
+              "Добавьте Face ID / Touch ID в настройках телефона.",
+              "Телефон баптауларында Face ID / Touch ID қосыңыз."
+            )
           );
           setBiometric(false);
           return;
@@ -426,10 +436,16 @@ export default function ProfileScreen() {
         }
 
         setBiometric(true);
-        Alert.alert(t(lang, "Готово ✅", "Дайын ✅"), t(lang, "Биометрия включена.", "Биометрия қосылды."));
+        Alert.alert(
+          t(lang, "Готово ✅", "Дайын ✅"),
+          t(lang, "Биометрия включена.", "Биометрия қосылды.")
+        );
       } catch {
         setBiometric(false);
-        Alert.alert(t(lang, "Ошибка", "Қате"), t(lang, "Не удалось включить биометрию.", "Биометрияны қосу мүмкін болмады."));
+        Alert.alert(
+          t(lang, "Ошибка", "Қате"),
+          t(lang, "Не удалось включить биометрию.", "Биометрияны қосу мүмкін болмады.")
+        );
       }
     },
     [lang]
@@ -440,7 +456,10 @@ export default function ProfileScreen() {
 
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== "granted") {
-      Alert.alert(t(lang, "Доступ", "Қолжетімділік"), t(lang, "Нужен доступ к галерее.", "Галереяға рұқсат керек."));
+      Alert.alert(
+        t(lang, "Доступ", "Қолжетімділік"),
+        t(lang, "Нужен доступ к галерее.", "Галереяға рұқсат керек.")
+      );
       return;
     }
 
@@ -455,19 +474,17 @@ export default function ProfileScreen() {
 
     const uri = res.assets[0].uri;
 
-    // локально показываем сразу
     setAvatarUri(uri);
     try {
       await AsyncStorage.setItem(KEY_PROFILE_AVATAR, uri);
     } catch {}
 
-    // если залогинен — загрузим в Storage и запишем в Firestore
     if (user?.uid && !guest) {
       try {
         const up = await uploadUriToStorage({
           uid: user.uid,
           uri,
-          folder: "profile" as any,
+          folder: "profile" as any, // приведение типа, чтобы избежать конфликта union-типа
           fileName: `avatar_${Date.now()}.jpg`,
           contentType: "image/jpeg",
         });
@@ -478,7 +495,6 @@ export default function ProfileScreen() {
           { merge: true }
         );
 
-        // после успешной записи — не зависим от file://
         setAvatarUri(null);
         await AsyncStorage.removeItem(KEY_PROFILE_AVATAR);
       } catch {
@@ -520,10 +536,15 @@ export default function ProfileScreen() {
     if (!user?.uid || guest) return;
 
     try {
-      await setDoc(doc(db, "users", user.uid), { displayName: n, lang } as UserProfileDoc, { merge: true });
+      await setDoc(doc(db, "users", user.uid), { displayName: n, lang } as UserProfileDoc, {
+        merge: true,
+      });
       Alert.alert(t(lang, "Готово ✅", "Дайын ✅"), t(lang, "Имя обновлено.", "Атыңыз жаңартылды."));
     } catch {
-      Alert.alert(t(lang, "Ошибка", "Қате"), t(lang, "Не удалось обновить имя.", "Атыңызды жаңарту мүмкін болмады."));
+      Alert.alert(
+        t(lang, "Ошибка", "Қате"),
+        t(lang, "Не удалось обновить имя.", "Атыңызды жаңарту мүмкін болмады.")
+      );
     }
   }, [editName, lang, user?.uid, guest]);
 
@@ -570,10 +591,11 @@ export default function ProfileScreen() {
   }, [navigateSafe]);
 
   const openPolicy = useCallback(() => {
-    // поставь свой реальный URL политики
     const url = "https://example.com/privacy";
     Linking.openURL(url).catch(() => {});
   }, []);
+
+  const favoritesTop3 = useMemo(() => favorites.slice(0, 3), [favorites]);
 
   return (
     <Screen contentStyle={{ paddingTop: 0, backgroundColor: theme.bg }}>
@@ -582,7 +604,9 @@ export default function ProfileScreen() {
         <Pressable style={styles.modalBackdrop} onPress={() => setEditOpen(false)} />
         <View style={styles.modalCenter}>
           <View style={[styles.modalCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
-            <Text style={[styles.modalTitle, { color: theme.text }]}>{t(lang, "Имя профиля", "Профиль аты")}</Text>
+            <Text style={[styles.modalTitle, { color: theme.text }]}>
+              {t(lang, "Имя профиля", "Профиль аты")}
+            </Text>
             <TextInput
               value={editName}
               onChangeText={setEditName}
@@ -595,7 +619,10 @@ export default function ProfileScreen() {
               onSubmitEditing={saveName}
             />
             <View style={styles.modalBtns}>
-              <Pressable style={[styles.modalBtn, { borderColor: theme.border, backgroundColor: theme.card }]} onPress={() => setEditOpen(false)}>
+              <Pressable
+                style={[styles.modalBtn, { borderColor: theme.border, backgroundColor: theme.card }]}
+                onPress={() => setEditOpen(false)}
+              >
                 <Text style={[styles.modalBtnText, { color: theme.text }]}>{t(lang, "Отмена", "Болдырмау")}</Text>
               </Pressable>
               <Pressable style={[styles.modalBtnPrimary]} onPress={saveName}>
@@ -778,7 +805,7 @@ export default function ProfileScreen() {
             </View>
           ) : (
             <View style={{ marginTop: 6 }}>
-              {favorites.slice(0, 3).map((it, idx) => {
+              {favoritesTop3.map((it, idx) => {
                 const title = lang === "RU" ? it.titleRU : it.titleKZ;
                 const subtitle = lang === "RU" ? it.subtitleRU : it.subtitleKZ;
                 return (
@@ -1101,7 +1128,14 @@ const styles = StyleSheet.create({
   footerText: { marginTop: 12, marginBottom: 18, textAlign: "center", fontSize: 12 },
 
   // Modal
-  modalBackdrop: { position: "absolute", left: 0, right: 0, top: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.35)" },
+  modalBackdrop: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    backgroundColor: "rgba(0,0,0,0.35)",
+  },
   modalCenter: { flex: 1, justifyContent: "center", paddingHorizontal: 18 },
   modalCard: { borderRadius: 18, borderWidth: 1, padding: 14 },
   modalTitle: { fontSize: 14, fontWeight: "900" },

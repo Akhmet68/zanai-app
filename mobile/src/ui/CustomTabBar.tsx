@@ -72,8 +72,7 @@ export default function CustomTabBar({ state, descriptors, navigation }: BottomT
           }
 
           const iconName =
-            (isFocused ? ICONS_FILLED[route.name] : ICONS_OUTLINE[route.name]) ??
-            "ellipse-outline";
+            (isFocused ? ICONS_FILLED[route.name] : ICONS_OUTLINE[route.name]) ?? "ellipse-outline";
 
           const iconColor = isFocused ? colors.navy : colors.muted;
 

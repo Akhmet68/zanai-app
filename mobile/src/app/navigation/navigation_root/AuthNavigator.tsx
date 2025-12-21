@@ -14,7 +14,7 @@ export type AuthStackParamList = {
   ChooseAuth: undefined;
   Login: undefined;
   Register: undefined;
-  VerifyEmail: undefined; // ✅
+  VerifyEmail: undefined;
 };
 
 const Stack = createNativeStackNavigator<AuthStackParamList>();

@@ -31,7 +31,8 @@ function joinPath(dir: string, file: string) {
 }
 
 async function ensureFileUri(uri: string, fileName: string): Promise<{ fileUri: string; shouldCleanup: boolean }> {
-  const isWeird = uri.startsWith("content://") || uri.startsWith("ph://") || uri.startsWith("assets-library://");
+  const isWeird =
+    uri.startsWith("content://") || uri.startsWith("ph://") || uri.startsWith("assets-library://");
   if (!isWeird) return { fileUri: uri, shouldCleanup: false };
 
   const baseDir = getWritableDir();
@@ -56,7 +57,7 @@ async function uriToBlob(uri: string): Promise<Blob> {
 export async function uploadUriToStorage(params: {
   uid: string;
   uri: string;
-  folder: "chat-images" | "chat-files" | "chat-audio";
+  folder: "chat-images" | "chat-files" | "chat-audio" | "profile";
   fileName?: string;
   contentType?: string;
   onProgress?: (p01: number) => void; // 0..1
