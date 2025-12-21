@@ -15,6 +15,7 @@ import {
   Share,
   LayoutAnimation,
   UIManager,
+  InteractionManager,
 } from "react-native";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -33,15 +34,74 @@ import { useAuth } from "../../app/auth/AuthContext";
 import { db } from "../../app/firebase/firebase";
 import { uploadUriToStorage } from "../../app/firebase/storageService";
 
+// Local fallback for missing profileSettings module (keeps app compiling and provides basic defaults)
+type Lang = "RU" | "KZ";
+
+function t(lang: Lang, ru: string, kz: string) {
+  return lang === "KZ" ? kz : ru;
+}
+
+function useProfileSettings() {
+  const [ready, setReady] = useState(false);
+  const [lang, setLangState] = useState<Lang>("RU");
+  const [darkMode, setDarkModeState] = useState(false);
+  const [notifications, setNotificationsState] = useState(true);
+  const [biometric, setBiometricState] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const raw = await AsyncStorage.getItem("zanai:profile:settings");
+        if (!cancelled && raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed.lang) setLangState(parsed.lang);
+          if (typeof parsed.darkMode === "boolean") setDarkModeState(parsed.darkMode);
+          if (typeof parsed.notifications === "boolean") setNotificationsState(parsed.notifications);
+          if (typeof parsed.biometric === "boolean") setBiometricState(parsed.biometric);
+        }
+      } catch {}
+      if (!cancelled) setReady(true);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    const tmo = setTimeout(() => {
+      AsyncStorage.setItem(
+        "zanai:profile:settings",
+        JSON.stringify({ lang, darkMode, notifications, biometric })
+      ).catch(() => {});
+    }, 400);
+    return () => clearTimeout(tmo);
+  }, [lang, darkMode, notifications, biometric]);
+
+  const setLang = useCallback((l: Lang) => setLangState(l), []);
+  const setDarkMode = useCallback((v: boolean) => setDarkModeState(v), []);
+  const setNotifications = useCallback((v: boolean) => setNotificationsState(v), []);
+  const setBiometric = useCallback((v: boolean) => setBiometricState(v), []);
+
+  return {
+    ready,
+    lang,
+    darkMode,
+    notifications,
+    biometric,
+    setLang,
+    setDarkMode,
+    setNotifications,
+    setBiometric,
+  };
+}
+
 const LOGO = require("../../../assets/zanai-logo.png");
 
 // --- AsyncStorage keys ---
-const KEY_PROFILE_SETTINGS = "zanai:profile:settings";
 const KEY_PROFILE_AVATAR = "zanai:profile:avatar";
 const KEY_FAVORITES = "zanai:favorites";
 const KEY_FAVORITES_ITEMS = "zanai:favorites_items";
-
-type Lang = "RU" | "KZ";
 
 type UserProfileDoc = {
   displayName?: string;
@@ -71,10 +131,6 @@ type RowProps = {
   danger?: boolean;
   disabled?: boolean;
 };
-
-function t(lang: Lang, ru: string, kz: string) {
-  return lang === "RU" ? ru : kz;
-}
 
 function fmtDate(iso?: string) {
   if (!iso) return "";
@@ -183,13 +239,22 @@ export default function ProfileScreen() {
 
   const { user, guest, logout } = useAuth();
 
+  // ✅ настройки через общий хук (debounced persist внутри)
+  const {
+    ready,
+    lang,
+    darkMode,
+    notifications,
+    biometric,
+    setLang,
+    setDarkMode,
+    setNotifications,
+    setBiometric,
+  } = useProfileSettings();
+
   const [profile, setProfile] = useState<UserProfileDoc | null>(null);
 
-  const [lang, setLang] = useState<Lang>("RU");
-  const [notifications, setNotifications] = useState(true);
-  const [darkMode, setDarkMode] = useState(false);
-  const [biometric, setBiometric] = useState(false);
-
+  // avatar: локально (на случай оффлайна/фейла аплоада)
   const [avatarUri, setAvatarUri] = useState<string | null>(null);
 
   // избранные новости
@@ -276,69 +341,66 @@ export default function ProfileScreen() {
     });
   }, [user?.uid, guest]);
 
-  // --- Load settings (persisted) ---
+  // --- avatar hydrate ---
   useEffect(() => {
+    let cancelled = false;
     (async () => {
       try {
-        const raw = await AsyncStorage.getItem(KEY_PROFILE_SETTINGS);
-        if (raw) {
-          const s = JSON.parse(raw) as Partial<{
-            lang: Lang;
-            notifications: boolean;
-            darkMode: boolean;
-            biometric: boolean;
-          }>;
-          if (s.lang) setLang(s.lang);
-          if (typeof s.notifications === "boolean") setNotifications(s.notifications);
-          if (typeof s.darkMode === "boolean") setDarkMode(s.darkMode);
-          if (typeof s.biometric === "boolean") setBiometric(s.biometric);
-        }
-
         const av = await AsyncStorage.getItem(KEY_PROFILE_AVATAR);
-        if (av) setAvatarUri(av);
+        if (!cancelled && av) setAvatarUri(av);
       } catch {}
     })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
-  // --- Save settings ---
+  // --- sync lang to Firestore (редко меняется; легкий debounce) ---
   useEffect(() => {
-    (async () => {
-      try {
-        await AsyncStorage.setItem(
-          KEY_PROFILE_SETTINGS,
-          JSON.stringify({ lang, notifications, darkMode, biometric })
-        );
-      } catch {}
-    })();
-  }, [lang, notifications, darkMode, biometric]);
+    if (!ready) return;
+    if (!user?.uid || guest) return;
+
+    const timer = setTimeout(() => {
+      setDoc(doc(db, "users", user.uid), { lang } as UserProfileDoc, { merge: true }).catch(() => {});
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [lang, user?.uid, guest, ready]);
 
   // --- Favorites loader (on focus) ---
-  const loadFavorites = useCallback(async () => {
-    try {
-      const mapRaw = await AsyncStorage.getItem(KEY_FAVORITES);
-      const itemsRaw = await AsyncStorage.getItem(KEY_FAVORITES_ITEMS);
+  const loadFavorites = useCallback(() => {
+    // ⛳️ отложим JSON.parse после переходов/анимаций, чтобы не дергать кадры
+    const task = InteractionManager.runAfterInteractions(async () => {
+      try {
+        const pairs = await AsyncStorage.multiGet([KEY_FAVORITES, KEY_FAVORITES_ITEMS]);
+        const mapRaw = pairs[0]?.[1] ?? null;
+        const itemsRaw = pairs[1]?.[1] ?? null;
 
-      const favMap = mapRaw ? (JSON.parse(mapRaw) as Record<string, boolean>) : {};
-      const ids = Object.keys(favMap).filter((k) => favMap[k]);
-      setFavoritesCount(ids.length);
+        const favMap = mapRaw ? (JSON.parse(mapRaw) as Record<string, boolean>) : {};
+        const ids = Object.keys(favMap).filter((k) => favMap[k]);
+        const idsSet = new Set(ids);
 
-      const idsSet = new Set(ids); // ✅ чуть быстрее, чем ids.includes в цикле
+        const items = itemsRaw ? (JSON.parse(itemsRaw) as FavoritePreview[]) : [];
+        const filtered = items
+          .filter((it) => idsSet.has(it.id))
+          .sort((a, b) => (b.createdAtISO ?? "").localeCompare(a.createdAtISO ?? ""));
 
-      const items = itemsRaw ? (JSON.parse(itemsRaw) as FavoritePreview[]) : [];
-      const filtered = items
-        .filter((it) => idsSet.has(it.id))
-        .sort((a, b) => (b.createdAtISO ?? "").localeCompare(a.createdAtISO ?? ""));
+        // один коммит состояний
+        setFavoritesCount(ids.length);
+        setFavorites(filtered);
+      } catch {
+        setFavoritesCount(0);
+        setFavorites([]);
+      }
+    });
 
-      setFavorites(filtered);
-    } catch {
-      setFavoritesCount(0);
-      setFavorites([]);
-    }
+    return () => task?.cancel?.();
   }, []);
 
   useFocusEffect(
     useCallback(() => {
-      loadFavorites();
+      const cancel = loadFavorites();
+      return cancel;
     }, [loadFavorites])
   );
 
@@ -388,7 +450,7 @@ export default function ProfileScreen() {
         { text: t(lang, "Отмена", "Болдырмау"), style: "cancel" },
       ]
     );
-  }, [lang]);
+  }, [lang, setLang]);
 
   const toggleBiometric = useCallback(
     async (next: boolean) => {
@@ -436,10 +498,7 @@ export default function ProfileScreen() {
         }
 
         setBiometric(true);
-        Alert.alert(
-          t(lang, "Готово ✅", "Дайын ✅"),
-          t(lang, "Биометрия включена.", "Биометрия қосылды.")
-        );
+        Alert.alert(t(lang, "Готово ✅", "Дайын ✅"), t(lang, "Биометрия включена.", "Биометрия қосылды."));
       } catch {
         setBiometric(false);
         Alert.alert(
@@ -448,7 +507,7 @@ export default function ProfileScreen() {
         );
       }
     },
-    [lang]
+    [lang, setBiometric]
   );
 
   const pickAvatar = useCallback(async () => {
@@ -474,17 +533,16 @@ export default function ProfileScreen() {
 
     const uri = res.assets[0].uri;
 
+    // мгновенный UI
     setAvatarUri(uri);
-    try {
-      await AsyncStorage.setItem(KEY_PROFILE_AVATAR, uri);
-    } catch {}
+    AsyncStorage.setItem(KEY_PROFILE_AVATAR, uri).catch(() => {});
 
     if (user?.uid && !guest) {
       try {
         const up = await uploadUriToStorage({
           uid: user.uid,
           uri,
-          folder: "profile" as any, // приведение типа, чтобы избежать конфликта union-типа
+          folder: "profile" as any,
           fileName: `avatar_${Date.now()}.jpg`,
           contentType: "image/jpeg",
         });
@@ -495,8 +553,9 @@ export default function ProfileScreen() {
           { merge: true }
         );
 
-        setAvatarUri(null);
-        await AsyncStorage.removeItem(KEY_PROFILE_AVATAR);
+        // ✅ без “мигания”: оставляем avatarUri как есть,
+        // а когда снапшот придет — shownAvatar подхватит profile.avatarUrl.
+        AsyncStorage.removeItem(KEY_PROFILE_AVATAR).catch(() => {});
       } catch {
         // не критично: локально останется
       }
@@ -511,9 +570,7 @@ export default function ProfileScreen() {
         style: "destructive",
         onPress: async () => {
           setAvatarUri(null);
-          try {
-            await AsyncStorage.removeItem(KEY_PROFILE_AVATAR);
-          } catch {}
+          AsyncStorage.removeItem(KEY_PROFILE_AVATAR).catch(() => {});
         },
       },
     ]);
@@ -604,9 +661,7 @@ export default function ProfileScreen() {
         <Pressable style={styles.modalBackdrop} onPress={() => setEditOpen(false)} />
         <View style={styles.modalCenter}>
           <View style={[styles.modalCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
-            <Text style={[styles.modalTitle, { color: theme.text }]}>
-              {t(lang, "Имя профиля", "Профиль аты")}
-            </Text>
+            <Text style={[styles.modalTitle, { color: theme.text }]}>{t(lang, "Имя профиля", "Профиль аты")}</Text>
             <TextInput
               value={editName}
               onChangeText={setEditName}
@@ -717,7 +772,9 @@ export default function ProfileScreen() {
 
             <View style={{ marginTop: 14 }}>
               <View style={styles.progressRow}>
-                <Text style={[styles.progressLabel, { color: theme.text }]}>{t(lang, "Заполненность профиля", "Профиль толуы")}</Text>
+                <Text style={[styles.progressLabel, { color: theme.text }]}>
+                  {t(lang, "Заполненность профиля", "Профиль толуы")}
+                </Text>
                 <Text style={[styles.progressValue, { color: colors.navy }]}>{percent}%</Text>
               </View>
 
@@ -726,7 +783,11 @@ export default function ProfileScreen() {
               </View>
 
               <Text style={[styles.progressHint, { color: theme.muted }]}>
-                {t(lang, "Добавь аватар и включи биометрию — профиль выглядит “профи”.", "Аватар қосып, биометрияны қоссan — профиль “профи” болады.")}
+                {t(
+                  lang,
+                  "Добавь аватар и включи биометрию — профиль выглядит “профи”.",
+                  "Аватар қосып, биометрияны қоссan — профиль “профи” болады."
+                )}
               </Text>
             </View>
 
@@ -812,11 +873,8 @@ export default function ProfileScreen() {
                   <Pressable
                     key={it.id}
                     onPress={() => {
-                      if (it.url) {
-                        Linking.openURL(it.url).catch(() => {});
-                      } else {
-                        Alert.alert(title, subtitle || "");
-                      }
+                      if (it.url) Linking.openURL(it.url).catch(() => {});
+                      else Alert.alert(title, subtitle || "");
                     }}
                     style={[
                       styles.favRow,
@@ -845,7 +903,10 @@ export default function ProfileScreen() {
               })}
 
               {favoritesCount > 3 && (
-                <Pressable style={[styles.smallBtn, { borderColor: theme.border, backgroundColor: theme.card }]} onPress={openFavorites}>
+                <Pressable
+                  style={[styles.smallBtn, { borderColor: theme.border, backgroundColor: theme.card }]}
+                  onPress={openFavorites}
+                >
                   <Text style={[styles.smallBtnText, { color: theme.text }]}>
                     {t(lang, "Открыть все", "Барлығын ашу")} ({favoritesCount})
                   </Text>
@@ -874,7 +935,7 @@ export default function ProfileScreen() {
                 thumbColor={notifications ? colors.navy : "#9CA3AF"}
               />
             }
-            onPress={() => setNotifications((v) => !v)}
+            onPress={() => setNotifications(!notifications)}
           />
 
           <View style={[styles.divider, { backgroundColor: theme.border }]} />
@@ -895,7 +956,7 @@ export default function ProfileScreen() {
                 thumbColor={darkMode ? colors.navy : "#9CA3AF"}
               />
             }
-            onPress={() => setDarkMode((v) => !v)}
+            onPress={() => setDarkMode(!darkMode)}
           />
 
           <View style={[styles.divider, { backgroundColor: theme.border }]} />
@@ -927,7 +988,7 @@ export default function ProfileScreen() {
             icon="key-outline"
             title={t(lang, "Изменить пароль", "Құпиясөзді өзгерту")}
             subtitle={t(lang, "Рекомендуем раз в 3 месяца", "Әр 3 айда бір")}
-            onPress={openChangePassword}
+            onPress={() => navigateSafe("ChangePassword")}
             disabled={guest}
           />
 
