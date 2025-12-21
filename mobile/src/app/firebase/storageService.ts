@@ -1,4 +1,4 @@
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { ref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
 import { storage } from "./firebase";
 import * as FileSystem from "expo-file-system";
 
@@ -8,18 +8,17 @@ function safeName(name: string) {
 
 function guessExtFromMime(mime?: string) {
   if (!mime) return "";
-  if (mime.includes("jpeg")) return ".jpg";
-  if (mime.includes("png")) return ".png";
-  if (mime.includes("webp")) return ".webp";
-  if (mime.includes("pdf")) return ".pdf";
-  if (mime.includes("m4a")) return ".m4a";
-  if (mime.includes("mp3")) return ".mp3";
-  if (mime.includes("aac")) return ".aac";
+  const m = mime.toLowerCase();
+  if (m.includes("jpeg")) return ".jpg";
+  if (m.includes("png")) return ".png";
+  if (m.includes("webp")) return ".webp";
+  if (m.includes("pdf")) return ".pdf";
+  if (m.includes("m4a")) return ".m4a";
+  if (m.includes("mp3")) return ".mp3";
+  if (m.includes("aac")) return ".aac";
   return "";
 }
 
-// Типы expo-file-system у тебя почему-то “не видят” documentDirectory/cacheDirectory,
-// поэтому работаем через any — это норм для Expo Go
 const FS: any = FileSystem;
 
 function getWritableDir(): string | null {
@@ -32,21 +31,14 @@ function joinPath(dir: string, file: string) {
 }
 
 async function ensureFileUri(uri: string, fileName: string): Promise<{ fileUri: string; shouldCleanup: boolean }> {
-  const isWeird =
-    uri.startsWith("content://") ||
-    uri.startsWith("ph://") ||
-    uri.startsWith("assets-library://");
-
+  const isWeird = uri.startsWith("content://") || uri.startsWith("ph://") || uri.startsWith("assets-library://");
   if (!isWeird) return { fileUri: uri, shouldCleanup: false };
 
   const baseDir = getWritableDir();
   if (!baseDir) throw new Error("Нет доступной директории для временных файлов (expo-file-system).");
 
   const dest = joinPath(baseDir, `${Date.now()}_${safeName(fileName)}`);
-
-  // На Android content:// часто ломает fetch(blob), поэтому копируем в file://
   await FS.copyAsync({ from: uri, to: dest });
-
   return { fileUri: dest, shouldCleanup: true };
 }
 
@@ -67,8 +59,9 @@ export async function uploadUriToStorage(params: {
   folder: "chat-images" | "chat-files" | "chat-audio";
   fileName?: string;
   contentType?: string;
+  onProgress?: (p01: number) => void; // 0..1
 }) {
-  const { uid, folder } = params;
+  const { uid, folder, onProgress } = params;
 
   const ext = guessExtFromMime(params.contentType);
   const baseName = params.fileName ? safeName(params.fileName) : `file_${Date.now()}${ext}`;
@@ -77,12 +70,24 @@ export async function uploadUriToStorage(params: {
   const { fileUri, shouldCleanup } = await ensureFileUri(params.uri, baseName);
 
   let blob: Blob | null = null;
-
   try {
     blob = await uriToBlob(fileUri);
 
     const r = ref(storage, path);
-    await uploadBytes(r, blob, params.contentType ? { contentType: params.contentType } : undefined);
+    const task = uploadBytesResumable(r, blob, params.contentType ? { contentType: params.contentType } : undefined);
+
+    await new Promise<void>((resolve, reject) => {
+      task.on(
+        "state_changed",
+        (snap) => {
+          if (!onProgress) return;
+          const p = snap.totalBytes > 0 ? snap.bytesTransferred / snap.totalBytes : 0;
+          onProgress(p);
+        },
+        (err) => reject(err),
+        () => resolve()
+      );
+    });
 
     const url = await getDownloadURL(r);
 

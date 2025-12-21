@@ -8,10 +8,10 @@ const firebaseConfig = {
   apiKey: "AIzaSyAKhgHhSaurR8iaRclN3-od_04z7p2HMRg",
   authDomain: "zanai-app.firebaseapp.com",
   projectId: "zanai-app",
-  storageBucket: "zanai-app.firebasestorage.app",
+  storageBucket: "zanai-app.appspot.com",
   messagingSenderId: "771269512484",
   appId: "1:771269512484:web:04f32fb5b773c94b0577b1",
-  measurementId: "G-D07PKF3XQS",
+  measurementId: "G-D07PKF3XQS"
 };
 
 export const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
@@ -33,6 +33,7 @@ function initAuth() {
         persistence: getReactNativePersistence(AsyncStorage),
       });
     } catch {
+      // ignore (auth already initialized)
     }
   }
 

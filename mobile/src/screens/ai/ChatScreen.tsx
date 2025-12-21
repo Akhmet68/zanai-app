@@ -34,7 +34,6 @@ import { aiChat } from "../../app/api/aiClient";
 
 const LOGO = require("../../../assets/zanai-logo.png");
 
-// Android: красивое появление/исчезновение элементов
 if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
@@ -92,7 +91,13 @@ function PlusSheet({
   onClearChat: () => void;
 }) {
   return (
-    <Modal visible={open} transparent animationType="fade" onRequestClose={onClose}>
+    <Modal
+      visible={open}
+      transparent
+      animationType="fade"
+      presentationStyle="overFullScreen"
+      onRequestClose={onClose}
+    >
       <Pressable style={styles.sheetBackdrop} onPress={onClose} />
       <View style={styles.sheetWrap}>
         <View style={styles.sheetCard}>
@@ -168,22 +173,13 @@ function TypingBubble() {
   );
 }
 
-function ImagePreviewModal({
-  open,
-  uri,
-  onClose,
-}: {
-  open: boolean;
-  uri: string | null;
-  onClose: () => void;
-}) {
+function ImagePreviewModal({ open, uri, onClose }: { open: boolean; uri: string | null; onClose: () => void }) {
   return (
-    <Modal visible={open} transparent animationType="fade" onRequestClose={onClose}>
+    <Modal visible={open} transparent animationType="fade" presentationStyle="overFullScreen" onRequestClose={onClose}>
       <View style={styles.imgModalBackdrop}>
         <Pressable style={styles.imgModalClose} onPress={onClose}>
           <Ionicons name="close" size={26} color="#fff" />
         </Pressable>
-
         {uri ? <Image source={{ uri }} style={styles.imgModalImage} resizeMode="contain" /> : null}
       </View>
     </Modal>
@@ -198,12 +194,7 @@ function Bubble({
 }: {
   m: ChatMessage;
   onOpenImage: (uri: string) => void;
-  audioUi: {
-    playingId: string | null;
-    isPlaying: boolean;
-    positionMs: number;
-    durationMs: number;
-  };
+  audioUi: { playingId: string | null; isPlaying: boolean; positionMs: number; durationMs: number };
   onToggleAudio: (m: ChatMessage) => void;
 }) {
   const isUser = m.role === "user";
@@ -218,9 +209,7 @@ function Bubble({
           <Image source={{ uri: m.url }} style={styles.imageMsg} />
         </Pressable>
         {!!m.text ? <Text style={[textStyle, { marginTop: 8 }]}>{m.text}</Text> : null}
-        {!!timeLabel ? (
-          <Text style={[styles.timeText, isUser && { color: "rgba(255,255,255,0.65)" }]}>{timeLabel}</Text>
-        ) : null}
+        {!!timeLabel ? <Text style={[styles.timeText, isUser && { color: "rgba(255,255,255,0.65)" }]}>{timeLabel}</Text> : null}
       </View>
     );
   }
@@ -243,9 +232,7 @@ function Bubble({
           </View>
           <Ionicons name="open-outline" size={18} color={isUser ? "#fff" : colors.muted} />
         </View>
-        {!!timeLabel ? (
-          <Text style={[styles.timeText, isUser && { color: "rgba(255,255,255,0.65)" }]}>{timeLabel}</Text>
-        ) : null}
+        {!!timeLabel ? <Text style={[styles.timeText, isUser && { color: "rgba(255,255,255,0.65)" }]}>{timeLabel}</Text> : null}
       </Pressable>
     );
   }
@@ -282,9 +269,7 @@ function Bubble({
           <Ionicons name="chevron-forward" size={18} color={isUser ? "#fff" : colors.muted} />
         </View>
 
-        {!!timeLabel ? (
-          <Text style={[styles.timeText, isUser && { color: "rgba(255,255,255,0.65)" }]}>{timeLabel}</Text>
-        ) : null}
+        {!!timeLabel ? <Text style={[styles.timeText, isUser && { color: "rgba(255,255,255,0.65)" }]}>{timeLabel}</Text> : null}
       </Pressable>
     );
   }
@@ -292,12 +277,34 @@ function Bubble({
   return (
     <View style={bubbleStyle}>
       <Text style={textStyle}>{m.text ?? ""}</Text>
-      {!!timeLabel ? (
-        <Text style={[styles.timeText, isUser && { color: "rgba(255,255,255,0.65)" }]}>{timeLabel}</Text>
-      ) : null}
+      {!!timeLabel ? <Text style={[styles.timeText, isUser && { color: "rgba(255,255,255,0.65)" }]}>{timeLabel}</Text> : null}
     </View>
   );
 }
+
+// стабильные опции записи в m4a
+const RECORDING_OPTIONS: Audio.RecordingOptions = {
+  isMeteringEnabled: false,
+  android: {
+    extension: ".m4a",
+    outputFormat: Audio.AndroidOutputFormat.MPEG_4,
+    audioEncoder: Audio.AndroidAudioEncoder.AAC,
+    sampleRate: 44100,
+    numberOfChannels: 1,
+    bitRate: 96000,
+  },
+  ios: {
+    extension: ".m4a",
+    audioQuality: Audio.IOSAudioQuality.HIGH,
+    sampleRate: 44100,
+    numberOfChannels: 1,
+    bitRate: 96000,
+    linearPCMBitDepth: 16,
+    linearPCMIsBigEndian: false,
+    linearPCMIsFloat: false,
+  },
+  web: undefined as any,
+};
 
 export default function ChatScreen() {
   const { user, guest } = useAuth();
@@ -308,37 +315,27 @@ export default function ChatScreen() {
 
   const [plusOpen, setPlusOpen] = useState(false);
   const [sendingAttachment, setSendingAttachment] = useState(false);
+  const [uploadP, setUploadP] = useState(0); // 0..1
   const [aiThinking, setAiThinking] = useState(false);
 
-  // Image preview
   const [imgOpen, setImgOpen] = useState(false);
   const [imgUri, setImgUri] = useState<string | null>(null);
 
-  // Voice record
   const [recording, setRecording] = useState<Audio.Recording | null>(null);
   const [recordingMs, setRecordingMs] = useState(0);
   const recordTimerRef = useRef<any>(null);
 
-  // Audio play
   const soundRef = useRef<Audio.Sound | null>(null);
-  const [audioUi, setAudioUi] = useState({
-    playingId: null as string | null,
-    isPlaying: false,
-    positionMs: 0,
-    durationMs: 0,
-  });
+  const [audioUi, setAudioUi] = useState({ playingId: null as string | null, isPlaying: false, positionMs: 0, durationMs: 0 });
 
-  // Throttle audio UI updates (perf)
   const lastAudioUiCommitRef = useRef(0);
   const pendingAudioUiRef = useRef<typeof audioUi | null>(null);
   const rafRef = useRef<number | null>(null);
 
-  // Scroll helpers
   const listRef = useRef<FlatList<ChatMessage>>(null);
   const [showScrollDown, setShowScrollDown] = useState(false);
   const isNearBottomRef = useRef(true);
 
-  // Keep latest messages in ref
   const messagesRef = useRef<ChatMessage[]>([]);
   useEffect(() => {
     messagesRef.current = messages;
@@ -360,15 +357,9 @@ export default function ChatScreen() {
 
   useEffect(() => {
     return () => {
-      try {
-        soundRef.current?.unloadAsync();
-      } catch {}
-      try {
-        if (recordTimerRef.current) clearInterval(recordTimerRef.current);
-      } catch {}
-      try {
-        if (rafRef.current) cancelAnimationFrame(rafRef.current);
-      } catch {}
+      try { soundRef.current?.unloadAsync(); } catch {}
+      try { if (recordTimerRef.current) clearInterval(recordTimerRef.current); } catch {}
+      try { if (rafRef.current) cancelAnimationFrame(rafRef.current); } catch {}
     };
   }, []);
 
@@ -410,20 +401,14 @@ export default function ChatScreen() {
       const answer = await aiChat(payload);
       const finalText = (answer ?? "").trim() || "Пустой ответ 😅";
 
-      if (!user?.uid) {
-        sendLocal({ role: "assistant", type: "text", text: finalText });
-      } else {
-        await fbSendMessage(user.uid, { role: "assistant", type: "text", text: finalText });
-      }
+      if (!user?.uid) sendLocal({ role: "assistant", type: "text", text: finalText });
+      else await fbSendMessage(user.uid, { role: "assistant", type: "text", text: finalText });
     } catch (e: any) {
       const msg = e?.message ?? "Не удалось получить ответ от AI.";
       const text = `⚠️ AI ошибка: ${msg}`;
 
-      if (!user?.uid) {
-        sendLocal({ role: "assistant", type: "text", text });
-      } else {
-        await fbSendMessage(user.uid, { role: "assistant", type: "text", text });
-      }
+      if (!user?.uid) sendLocal({ role: "assistant", type: "text", text });
+      else await fbSendMessage(user.uid, { role: "assistant", type: "text", text });
     } finally {
       setAiThinking(false);
     }
@@ -438,12 +423,7 @@ export default function ChatScreen() {
     setInput("");
 
     if (!user?.uid) {
-      const localUserMsg: ChatMessage = {
-        id: String(Date.now()) + Math.random(),
-        role: "user",
-        type: "text",
-        text: trimmed,
-      };
+      const localUserMsg: ChatMessage = { id: String(Date.now()) + Math.random(), role: "user", type: "text", text: trimmed };
 
       LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
       setMessages((p) => [...p, localUserMsg]);
@@ -461,20 +441,17 @@ export default function ChatScreen() {
     await askAiAndRespond(ctx, trimmed);
   };
 
-  // ---------- iOS FIX: close sheet before native picker ----------
+  // iOS FIX: close sheet before native picker
   const closeSheetBeforeNativePicker = useCallback(async () => {
     setPlusOpen(false);
-
     if (Platform.OS === "ios") {
       await new Promise<void>((resolve) => {
-        InteractionManager.runAfterInteractions(() => {
-          setTimeout(resolve, 80);
-        });
+        InteractionManager.runAfterInteractions(() => setTimeout(resolve, 80));
       });
     }
   }, []);
 
-  // ---------- Attachments ----------
+  // Attachments
   const sendImage = async (uri: string, name: string, mime: string) => {
     if (sendingAttachment) return;
 
@@ -485,6 +462,7 @@ export default function ChatScreen() {
 
     try {
       setSendingAttachment(true);
+      setUploadP(0);
 
       const up = await uploadUriToStorage({
         uid: user.uid,
@@ -492,20 +470,15 @@ export default function ChatScreen() {
         folder: "chat-images",
         fileName: name,
         contentType: mime,
+        onProgress: setUploadP,
       });
 
-      await fbSendMessage(user.uid, {
-        role: "user",
-        type: "image",
-        url: up.url,
-        name: up.name,
-        mime,
-        size: up.size,
-      });
+      await fbSendMessage(user.uid, { role: "user", type: "image", url: up.url, name: up.name, mime, size: up.size });
     } catch (e: any) {
       Alert.alert("Ошибка", e?.message ?? "Не удалось отправить фото.");
     } finally {
       setSendingAttachment(false);
+      setUploadP(0);
     }
   };
 
@@ -542,11 +515,7 @@ export default function ChatScreen() {
         return Alert.alert("Доступ", "Разреши доступ к Камере в настройках iOS (для Expo Go).");
       }
 
-      const res = await ImagePicker.launchCameraAsync({
-        allowsEditing: true,
-        quality: 0.92,
-      });
-
+      const res = await ImagePicker.launchCameraAsync({ allowsEditing: true, quality: 0.92 });
       if (res.canceled || !res.assets?.[0]?.uri) return;
 
       const asset = res.assets[0];
@@ -560,11 +529,7 @@ export default function ChatScreen() {
     try {
       await closeSheetBeforeNativePicker();
 
-      const res = await DocumentPicker.getDocumentAsync({
-        multiple: false,
-        copyToCacheDirectory: true,
-      });
-
+      const res = await DocumentPicker.getDocumentAsync({ multiple: false, copyToCacheDirectory: true });
       if (res.canceled) return;
 
       const a = res.assets?.[0];
@@ -579,6 +544,7 @@ export default function ChatScreen() {
       }
 
       setSendingAttachment(true);
+      setUploadP(0);
 
       const up = await uploadUriToStorage({
         uid: user.uid,
@@ -586,20 +552,15 @@ export default function ChatScreen() {
         folder: "chat-files",
         fileName: name,
         contentType: mime,
+        onProgress: setUploadP,
       });
 
-      await fbSendMessage(user.uid, {
-        role: "user",
-        type: "file",
-        url: up.url,
-        name: up.name,
-        mime,
-        size: a.size ?? up.size,
-      });
+      await fbSendMessage(user.uid, { role: "user", type: "file", url: up.url, name: up.name, mime, size: a.size ?? up.size });
     } catch (e: any) {
       Alert.alert("Ошибка", e?.message ?? "Не удалось выбрать документ.");
     } finally {
       setSendingAttachment(false);
+      setUploadP(0);
     }
   };
 
@@ -623,31 +584,25 @@ export default function ChatScreen() {
     ]);
   };
 
-  // ---------- Voice (iOS safe) ----------
+  // Voice
   const startRecording = async () => {
     if (sendingAttachment) return;
 
     try {
-      // stop any playing sound (iOS recording often conflicts)
+      // stop any playing sound before recording (iOS conflict)
       if (soundRef.current) {
-        try {
-          await soundRef.current.unloadAsync();
-        } catch {}
+        try { await soundRef.current.unloadAsync(); } catch {}
         soundRef.current = null;
-
-        setAudioUi((p) => ({ ...p, playingId: null, isPlaying: false, positionMs: 0, durationMs: 0 }));
+        setAudioUi({ playingId: null, isPlaying: false, positionMs: 0, durationMs: 0 });
       }
 
       const perm = await Audio.requestPermissionsAsync();
       if (!perm.granted) return Alert.alert("Доступ", "Разреши микрофон в настройках iOS (для Expo Go).");
 
-      await Audio.setAudioModeAsync({
-        allowsRecordingIOS: true,
-        playsInSilentModeIOS: true,
-      });
+      await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
 
       const rec = new Audio.Recording();
-      await rec.prepareToRecordAsync(Audio.RecordingOptionsPresets.HIGH_QUALITY);
+      await rec.prepareToRecordAsync(RECORDING_OPTIONS);
       await rec.startAsync();
 
       setRecording(rec);
@@ -681,37 +636,33 @@ export default function ChatScreen() {
 
       if (!uri) return Alert.alert("Ошибка", "Не удалось получить файл записи.");
 
+      const mime = "audio/m4a";
+      const name = `voice_${Date.now()}.m4a`;
+
       if (!user?.uid) {
-        sendLocal({ role: "user", type: "audio", url: uri, name: "voice.m4a", mime: "audio/m4a", durationMs });
+        sendLocal({ role: "user", type: "audio", url: uri, name, mime, durationMs });
         return;
       }
 
       setSendingAttachment(true);
+      setUploadP(0);
 
       const up = await uploadUriToStorage({
         uid: user.uid,
         uri,
         folder: "chat-audio",
-        fileName: `voice_${Date.now()}.m4a`,
-        contentType: "audio/m4a",
+        fileName: name,
+        contentType: mime,
+        onProgress: setUploadP,
       });
 
-      await fbSendMessage(user.uid, {
-        role: "user",
-        type: "audio",
-        url: up.url,
-        name: up.name,
-        mime: "audio/m4a",
-        durationMs,
-        size: up.size,
-      });
+      await fbSendMessage(user.uid, { role: "user", type: "audio", url: up.url, name: up.name, mime, durationMs, size: up.size });
     } catch (e: any) {
       Alert.alert("Ошибка", e?.message ?? "Не удалось отправить голосовое.");
     } finally {
       setSendingAttachment(false);
-      try {
-        await Audio.setAudioModeAsync({ allowsRecordingIOS: false, playsInSilentModeIOS: true });
-      } catch {}
+      setUploadP(0);
+      try { await Audio.setAudioModeAsync({ allowsRecordingIOS: false, playsInSilentModeIOS: true }); } catch {}
     }
   };
 
@@ -719,7 +670,7 @@ export default function ChatScreen() {
     pendingAudioUiRef.current = next;
 
     const now = Date.now();
-    const minInterval = 220; // ~4-5 updates/sec
+    const minInterval = 220;
 
     const flush = () => {
       rafRef.current = null;
@@ -729,14 +680,12 @@ export default function ChatScreen() {
       lastAudioUiCommitRef.current = Date.now();
     };
 
-    // If enough time passed, commit now on next frame.
     if (now - lastAudioUiCommitRef.current >= minInterval) {
       if (rafRef.current) return;
       rafRef.current = requestAnimationFrame(flush);
       return;
     }
 
-    // Otherwise schedule a delayed RAF flush (one pending only).
     if (rafRef.current) return;
     const delay = minInterval - (now - lastAudioUiCommitRef.current);
     setTimeout(() => {
@@ -749,7 +698,6 @@ export default function ChatScreen() {
     if (!m.url) return;
 
     try {
-      // If tapping same item: toggle play/pause
       if (audioUi.playingId === m.id && soundRef.current) {
         const st: any = await soundRef.current.getStatusAsync();
         if (st?.isLoaded && st?.isPlaying) {
@@ -762,20 +710,12 @@ export default function ChatScreen() {
         return;
       }
 
-      // Load new
       if (soundRef.current) {
-        try {
-          await soundRef.current.unloadAsync();
-        } catch {}
+        try { await soundRef.current.unloadAsync(); } catch {}
         soundRef.current = null;
       }
 
-      setAudioUi({
-        playingId: m.id,
-        isPlaying: false,
-        positionMs: 0,
-        durationMs: m.durationMs ?? 0,
-      });
+      setAudioUi({ playingId: m.id, isPlaying: false, positionMs: 0, durationMs: m.durationMs ?? 0 });
 
       const { sound } = await Audio.Sound.createAsync(
         { uri: m.url },
@@ -808,7 +748,6 @@ export default function ChatScreen() {
     }
   };
 
-  // ---------- UI helpers ----------
   const openImage = (uri: string) => {
     setImgUri(uri);
     setImgOpen(true);
@@ -826,9 +765,9 @@ export default function ChatScreen() {
   };
 
   const memoryLabel = user?.uid ? "Память включена (профиль)" : guest ? "Гостевой режим" : "Без входа";
-  const statusLabel = sendingAttachment ? "Отправка..." : aiThinking ? "AI печатает..." : memoryLabel;
+  const uploadLabel = sendingAttachment ? `Загрузка… ${Math.round(uploadP * 100)}%` : "";
+  const statusLabel = sendingAttachment ? uploadLabel : aiThinking ? "AI печатает..." : memoryLabel;
 
-  // важное: НЕ блокируем plus из-за aiThinking — только из-за отправки файла
   const textDisabled = sendingAttachment || aiThinking;
 
   return (
@@ -844,7 +783,6 @@ export default function ChatScreen() {
 
       <ImagePreviewModal open={imgOpen} uri={imgUri} onClose={() => setImgOpen(false)} />
 
-      {/* Header */}
       <View style={styles.header}>
         <View style={{ width: 36, height: 36 }} />
         <Image source={LOGO} style={styles.logo} />
@@ -876,11 +814,13 @@ export default function ChatScreen() {
               keyExtractor={(m) => m.id}
               showsVerticalScrollIndicator={false}
               contentContainerStyle={styles.listContent}
-              renderItem={({ item }) => (
-                <Bubble m={item} onOpenImage={openImage} audioUi={audioUi} onToggleAudio={onToggleAudio} />
-              )}
+              renderItem={({ item }) => <Bubble m={item} onOpenImage={openImage} audioUi={audioUi} onToggleAudio={onToggleAudio} />}
               onScroll={onScroll}
               scrollEventThrottle={16}
+              removeClippedSubviews
+              initialNumToRender={14}
+              maxToRenderPerBatch={10}
+              windowSize={9}
               ListEmptyComponent={
                 <View style={styles.emptyWrap}>
                   <Ionicons name="chatbubble-ellipses-outline" size={28} color={colors.muted} />
@@ -902,9 +842,7 @@ export default function ChatScreen() {
           </View>
         )}
 
-        {/* Bottom */}
         <View style={styles.footer}>
-          {/* Quick prompts */}
           <View style={styles.quickRow}>
             <Pressable style={styles.quickCard} onPress={() => sendText("Помоги мне с законом — заполнить документ")} disabled={textDisabled}>
               <Text style={styles.quickTitle}>Помоги мне с законом</Text>
@@ -917,7 +855,6 @@ export default function ChatScreen() {
             </Pressable>
           </View>
 
-          {/* Input */}
           <View style={styles.promptRow}>
             <Pressable
               style={[styles.plusBtn, sendingAttachment && { opacity: 0.6 }]}
@@ -939,11 +876,10 @@ export default function ChatScreen() {
                 editable={!textDisabled}
               />
 
-              {/* Mic toggle */}
               <Pressable
                 style={[styles.pillIcon, recording && { backgroundColor: "#FFE9E9" }]}
                 onPress={recording ? stopRecordingAndSend : startRecording}
-                disabled={sendingAttachment} // микрофон не блокируем из-за aiThinking
+                disabled={sendingAttachment}
               >
                 <Ionicons
                   name={recording ? "stop-circle-outline" : "mic-outline"}
@@ -952,7 +888,6 @@ export default function ChatScreen() {
                 />
               </Pressable>
 
-              {/* Send */}
               <Pressable style={styles.pillIcon} onPress={() => sendText()} disabled={textDisabled}>
                 <Ionicons name="send-outline" size={20} color={colors.text} />
               </Pressable>
@@ -1102,7 +1037,6 @@ const styles = StyleSheet.create({
     elevation: 5,
   },
 
-  // Sheet
   sheetBackdrop: { position: "absolute", left: 0, right: 0, top: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.35)" },
   sheetWrap: { flex: 1, justifyContent: "flex-end" },
   sheetCard: {
@@ -1146,7 +1080,6 @@ const styles = StyleSheet.create({
   },
   sheetCancelText: { fontSize: 14, fontWeight: "900", color: colors.text },
 
-  // Image modal
   imgModalBackdrop: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.92)",

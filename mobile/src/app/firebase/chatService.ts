@@ -39,7 +39,7 @@ function col(uid: string) {
 }
 
 export function fbListenMessages(uid: string, onData: (msgs: ChatMessage[]) => void) {
-  const q = query(col(uid), orderBy("createdAt", "asc"), limit(400));
+  const q = query(col(uid), orderBy("createdAt", "asc"), limit(600));
 
   return onSnapshot(q, (snap) => {
     const items: ChatMessage[] = snap.docs.map((d) => {
@@ -66,7 +66,7 @@ export async function fbSendMessage(uid: string, msg: Omit<ChatMessageDoc, "crea
 }
 
 export async function fbClearChat(uid: string) {
-  const q = query(col(uid), orderBy("createdAt", "desc"), limit(800));
+  const q = query(col(uid), orderBy("createdAt", "desc"), limit(1200));
   const snap = await getDocs(q);
   const batch = writeBatch(db);
   snap.docs.forEach((d) => batch.delete(d.ref));

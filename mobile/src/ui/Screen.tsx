@@ -1,12 +1,12 @@
 import React from "react";
-import { StyleSheet, View, ViewStyle } from "react-native";
+import { StyleSheet, View, StyleProp, ViewStyle } from "react-native";
 import { SafeAreaView, Edge } from "react-native-safe-area-context";
 import { colors } from "../core/colors";
 
 type Props = {
   children: React.ReactNode;
-  style?: ViewStyle;
-  contentStyle?: ViewStyle;
+  style?: StyleProp<ViewStyle>;
+  contentStyle?: StyleProp<ViewStyle>;
   edges?: Edge[];
 };
 

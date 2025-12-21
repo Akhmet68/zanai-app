@@ -1,13 +1,20 @@
-import React from "react";
-import { View, Text, Pressable, StyleSheet, Image, Alert, Platform } from "react-native";
+import React, { useEffect } from "react";
+import { View, Text, Pressable, StyleSheet, Image, Alert, Platform, ActivityIndicator } from "react-native";
 import Ionicons from "@expo/vector-icons/Ionicons";
-import { useNavigation } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 
+import * as WebBrowser from "expo-web-browser";
+import * as AuthSession from "expo-auth-session";
+import * as Google from "expo-auth-session/providers/google";
+import { GoogleAuthProvider, signInWithCredential } from "firebase/auth";
+
 import Screen from "../../ui/Screen";
 import { colors } from "../../core/colors";
+import { auth } from "../../app/firebase/firebase";
 import { useAuth } from "../../app/auth/AuthContext";
+
+WebBrowser.maybeCompleteAuthSession();
 
 const LOGO = require("../../../assets/zanai-logo.png");
 
@@ -16,49 +23,103 @@ function SocialBtn({
   label,
   variant,
   onPress,
+  loading,
+  disabled,
 }: {
   icon: keyof typeof Ionicons.glyphMap;
   label: string;
   variant: "dark" | "light";
   onPress: () => void;
+  loading?: boolean;
+  disabled?: boolean;
 }) {
   const dark = variant === "dark";
   return (
     <Pressable
       onPress={onPress}
+      disabled={disabled || loading}
       style={({ pressed }) => [
         styles.socialBtn,
         dark ? styles.socialDark : styles.socialLight,
-        pressed && { opacity: 0.92, transform: [{ scale: 0.995 }] },
+        (pressed || loading) && { opacity: 0.92, transform: [{ scale: 0.995 }] },
+        disabled && { opacity: 0.55 },
       ]}
     >
-      <Ionicons name={icon} size={20} color={dark ? "#fff" : colors.text} />
+      {loading ? (
+        <ActivityIndicator color={dark ? "#fff" : colors.text} />
+      ) : (
+        <Ionicons name={icon} size={20} color={dark ? "#fff" : colors.text} />
+      )}
       <Text style={[styles.socialText, dark && { color: "#fff" }]}>{label}</Text>
     </Pressable>
   );
 }
 
 export default function ChooseAuthScreen() {
-  const navigation = useNavigation<any>();
-  const { continueAsGuest } = useAuth(); 
+  const { continueAsGuest } = useAuth();
   const insets = useSafeAreaInsets();
 
-  const onApple = () => {
-    if (Platform.OS !== "ios") {
-      Alert.alert("Apple", "Apple Sign-In доступен на iOS. На Android подключим Google.");
-      return;
+  const expoClientId = process.env.EXPO_PUBLIC_GOOGLE_EXPO_CLIENT_ID;
+  const iosClientId = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID;
+  const androidClientId = process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID;
+
+  const redirectUri = AuthSession.makeRedirectUri({ useProxy: true } as any);
+
+  const [request, response, promptAsync] = Google.useAuthRequest(
+    {
+      clientId: expoClientId,
+      iosClientId,
+      androidClientId,
+      redirectUri,
+      scopes: ["profile", "email"],
+      responseType: AuthSession.ResponseType.IdToken,
+      selectAccount: true,
     }
-    Alert.alert("Скоро", "Apple Sign-In подключим следующим шагом (через Dev Build).");
+  );
+
+  const googleReady = !!expoClientId || !!iosClientId || !!androidClientId;
+
+  useEffect(() => {
+    (async () => {
+      if (response?.type !== "success") return;
+      const idToken = (response as any)?.params?.id_token;
+      if (!idToken) {
+        Alert.alert("Google", "Не получили id_token. Проверь client_id и настройки OAuth.");
+        return;
+      }
+      try {
+        const credential = GoogleAuthProvider.credential(idToken);
+        await signInWithCredential(auth, credential);
+      } catch (e: any) {
+        Alert.alert("Google", e?.message ?? "Не удалось войти через Google.");
+      }
+    })();
+  }, [response]);
+
+  const onApple = () => {
+    Alert.alert(
+      "Apple Sign-In",
+      "В Expo Go Apple Sign-In обычно не доводится. Сделаем Dev Build/EAS — тогда подключим Apple на 100%."
+    );
   };
 
-  const onGoogle = () => {
-    Alert.alert("Скоро", "Google Sign-In подключим следующим шагом (через Dev Build).");
+  const onGoogle = async () => {
+    if (!googleReady) {
+      Alert.alert(
+        "Google Sign-In",
+        "Добавь env переменные client_id (EXPO_PUBLIC_GOOGLE_*_CLIENT_ID), потом перезапусти Expo."
+      );
+      return;
+    }
+    await promptAsync();
   };
+
+  const GRAD = ["#0B1E5B", "#162A63", "#FFFFFF"] as const;
 
   return (
     <Screen contentStyle={{ paddingTop: 0 }} edges={["left", "right"]}>
       <LinearGradient
-        colors={["#0B1E5B", "#162A63", "#FFFFFF"]}
+        colors={GRAD}
         locations={[0, 0.62, 1]}
         style={[styles.bg, { paddingTop: insets.top + 14, paddingBottom: insets.bottom + 18 }]}
       >
@@ -70,21 +131,19 @@ export default function ChooseAuthScreen() {
 
           <View style={styles.card}>
             <SocialBtn icon="logo-apple" label="Продолжить с Apple" variant="dark" onPress={onApple} />
-            <SocialBtn icon="logo-google" label="Продолжить с Google" variant="light" onPress={onGoogle} />
+            <SocialBtn
+              icon="logo-google"
+              label="Продолжить с Google"
+              variant="light"
+              onPress={onGoogle}
+              disabled={!request}
+            />
 
             <View style={styles.dividerRow}>
               <View style={styles.line} />
               <Text style={styles.or}>или</Text>
               <View style={styles.line} />
             </View>
-
-            <Pressable onPress={() => navigation.navigate("Login")} style={({ pressed }) => [styles.primary, pressed && { opacity: 0.92 }]}>
-              <Text style={styles.primaryText}>Войти по почте</Text>
-            </Pressable>
-
-            <Pressable onPress={() => navigation.navigate("Register")} style={({ pressed }) => [styles.secondary, pressed && { opacity: 0.92 }]}>
-              <Text style={styles.secondaryText}>Создать аккаунт</Text>
-            </Pressable>
 
             <Pressable onPress={continueAsGuest} style={{ marginTop: 14 }}>
               <Text style={styles.guest}>Продолжить без входа</Text>
@@ -134,12 +193,6 @@ const styles = StyleSheet.create({
   dividerRow: { flexDirection: "row", alignItems: "center", gap: 10, marginVertical: 10 },
   line: { flex: 1, height: 1, backgroundColor: colors.border },
   or: { color: colors.muted, fontWeight: "800", fontSize: 12 },
-
-  primary: { height: 56, borderRadius: 18, backgroundColor: colors.navy, alignItems: "center", justifyContent: "center", marginTop: 2 },
-  primaryText: { color: "#fff", fontSize: 16, fontWeight: "900" },
-
-  secondary: { height: 56, borderRadius: 18, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.white, alignItems: "center", justifyContent: "center", marginTop: 10 },
-  secondaryText: { color: colors.text, fontSize: 16, fontWeight: "900" },
 
   guest: { textAlign: "center", color: colors.navy, fontWeight: "900" },
   terms: { marginTop: 12, textAlign: "center", color: colors.muted, fontSize: 12, lineHeight: 16 },

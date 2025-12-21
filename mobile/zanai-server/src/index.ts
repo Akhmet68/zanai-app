@@ -8,9 +8,7 @@ const app = express();
 app.use(cors());
 app.use(express.json({ limit: "2mb" }));
 
-const client = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 app.get("/health", (_req, res) => res.json({ ok: true }));
 
@@ -21,37 +19,36 @@ type ChatInMessage = {
 
 app.post("/chat", async (req, res) => {
   try {
-    const { messages } = req.body as { messages: ChatInMessage[] };
-
     if (!process.env.OPENAI_API_KEY) {
-      return res.status(500).json({ error: "OPENAI_API_KEY is missing in .env" });
+      return res.status(500).json({ error: "OPENAI_API_KEY is missing" });
     }
+
+    const { messages } = req.body as { messages: ChatInMessage[] };
     if (!Array.isArray(messages) || messages.length === 0) {
       return res.status(400).json({ error: "messages[] is required" });
     }
 
-    const model = process.env.OPENAI_MODEL ?? "gpt-5";
+    // дефолт: максимально совместимый
+    const model = process.env.OPENAI_MODEL ?? "gpt-4o-mini";
 
-    // Responses API умеет принимать input как массив сообщений role/content :contentReference[oaicite:2]{index=2}
     const response = await client.responses.create({
       model,
-      // можно чуть “мягче”/дешевле:
-      reasoning: { effort: "low" },
       input: [
-        { role: "developer", content: "You are ZanAI — helpful assistant. Reply in Russian or Kazakh depending on user language." },
+        {
+          role: "developer",
+          content: "You are ZanAI — helpful assistant. Reply in Russian or Kazakh depending on user language."
+        },
         ...messages,
       ],
     });
 
     return res.json({ text: response.output_text ?? "" });
   } catch (e: any) {
-    return res.status(500).json({
-      error: e?.message ?? "OpenAI request failed",
-    });
+    return res.status(500).json({ error: e?.message ?? "OpenAI request failed" });
   }
 });
 
 const port = Number(process.env.PORT ?? 3001);
-app.listen(port, () => {
-  console.log(`✅ zanai-server running on http://localhost:${port}`);
+app.listen(port, "0.0.0.0", () => {
+  console.log(`✅ zanai-server running on http://0.0.0.0:${port}`);
 });

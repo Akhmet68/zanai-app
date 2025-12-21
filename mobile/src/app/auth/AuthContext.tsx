@@ -17,6 +17,13 @@ type AuthCtx = {
 
 const Ctx = createContext<AuthCtx | null>(null);
 
+function isSocialUser(u: User | null) {
+  if (!u) return false;
+  // password => требует emailVerified
+  // google.com / apple.com => обычно уже доверенные
+  return u.providerData?.some((p) => p.providerId && p.providerId !== "password") ?? false;
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [initializing, setInitializing] = useState(true);
@@ -31,7 +38,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return unsub;
   }, []);
 
-  const isVerified = !!user?.emailVerified;
+  const isVerified = !!user?.emailVerified || isSocialUser(user);
   const isAuthed = (!!user && isVerified) || guest;
 
   const refreshUser = async () => {

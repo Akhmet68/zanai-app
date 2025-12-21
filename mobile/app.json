@@ -5,6 +5,7 @@
     "version": "0.1.0",
     "orientation": "portrait",
     "platforms": ["ios", "android"],
+    "scheme": "zanai",
     "icon": "./assets/icon.png",
     "splash": {
       "image": "./assets/splash.png",
@@ -16,8 +17,12 @@
       "supportsTablet": true,
       "infoPlist": {
         "NSPhotoLibraryUsageDescription": "Нужно для выбора фото в чат.",
+        "NSPhotoLibraryAddUsageDescription": "Нужно для сохранения/кэширования выбранных файлов.",
         "NSCameraUsageDescription": "Нужно для съемки фото в чат.",
-        "NSMicrophoneUsageDescription": "Нужно для записи голосовых сообщений."
+        "NSMicrophoneUsageDescription": "Нужно для записи голосовых сообщений.",
+        "NSAppTransportSecurity": {
+          "NSAllowsArbitraryLoads": true
+        }
       }
     },
     "android": {
